@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="A browser-based two-interval auditory duration-discrimination experiment with Getty replication and randomized model-fitting modes."
+    />
+    <title>Interval Lab — Auditory duration discrimination</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">AUDITORY PSYCHOPHYSICS</p>
+          <h1>Interval Lab</h1>
+        </div>
+        <div class="save-indicator" id="saveIndicator" aria-live="polite">
+          <span class="save-dot"></span>
+          <span>Saved locally</span>
+        </div>
+      </header>
+
+      <main>
+        <section id="setupView" class="view">
+          <div class="intro-row">
+            <div>
+              <h2>Configure a run</h2>
+              <p>Two silent intervals bounded by clicks. Choose which interval was longer.</p>
+            </div>
+            <button class="button secondary" id="importJsonButton">Load JSON</button>
+            <input id="importJsonInput" type="file" accept="application/json,.json" hidden />
+          </div>
+
+          <div class="saved-experiment-row" id="savedExperimentRow" hidden>
+            <label class="saved-experiment-field">
+              <span>Saved experiments on this device</span>
+              <select id="savedExperimentSelect"></select>
+            </label>
+            <div class="saved-experiment-actions">
+              <button class="button primary" id="resumeButton">Resume selected</button>
+              <button class="button ghost" id="removeExperimentButton">Remove</button>
+            </div>
+          </div>
+
+          <div class="mode-switch" role="radiogroup" aria-label="Experiment mode">
+            <label class="mode-card selected">
+              <input type="radio" name="mode" value="getty" checked />
+              <span class="mode-number">01</span>
+              <span>
+                <strong>Getty 1975</strong>
+                <small>Exact standards, comparisons, blocks, and presentation order.</small>
+              </span>
+            </label>
+            <label class="mode-card">
+              <input type="radio" name="mode" value="randomized" />
+              <span class="mode-number">02</span>
+              <span>
+                <strong>Randomized pairs</strong>
+                <small>Symmetric interval pairs designed for trial-level model fitting.</small>
+              </span>
+            </label>
+          </div>
+
+          <div class="setup-grid">
+            <section class="panel configuration-panel">
+              <div id="gettyConfig" class="config-section">
+                <div class="section-heading">
+                  <h3>Getty protocol</h3>
+                  <span class="chip">4,950 trials total</span>
+                </div>
+                <div class="protocol-table">
+                  <div><span>Standards</span><strong>15 sessions · 50–3,200 ms</strong></div>
+                  <div><span>Comparisons</span><strong>11 per standard</strong></div>
+                  <div><span>Repetitions</span><strong>30 shuffled blocks</strong></div>
+                  <div><span>Order</span><strong>Standard always first</strong></div>
+                </div>
+                <p class="note">Session order is randomized once. Each session contains one standard and lasts about 45 minutes in the original report.</p>
+              </div>
+
+              <div id="randomizedConfig" class="config-section" hidden>
+                <div class="section-heading">
+                  <h3>Randomized design</h3>
+                  <span class="chip" id="randomTrialEstimate">600 trials</span>
+                </div>
+                <div class="form-grid">
+                  <label>
+                    <span>Trials</span>
+                    <input id="randomTrials" type="number" min="20" max="5000" step="10" value="600" />
+                  </label>
+                  <label class="check-field">
+                    <input id="infiniteTrials" type="checkbox" />
+                    <span>Unlimited trials</span>
+                  </label>
+                  <label>
+                    <span>Equal-pair trials (%)</span>
+                    <input id="equalPercent" type="number" min="0" max="30" step="1" value="5" />
+                  </label>
+                  <label>
+                    <span>Minimum duration (ms)</span>
+                    <input id="minDuration" type="number" min="10" max="10000" step="10" value="50" />
+                  </label>
+                  <label>
+                    <span>Maximum duration (ms)</span>
+                    <input id="maxDuration" type="number" min="20" max="20000" step="10" value="3200" />
+                  </label>
+                  <label>
+                    <span>Minimum relative difference (%)</span>
+                    <input id="minDifference" type="number" min="0.1" max="100" step="0.5" value="1" />
+                  </label>
+                  <label>
+                    <span>Maximum relative difference (%)</span>
+                    <input id="maxDifference" type="number" min="0.5" max="150" step="0.5" value="30" />
+                  </label>
+                  <label class="check-field wide-field">
+                    <input id="requireTrialStart" type="checkbox" checked />
+                    <span>Require Start before every trial</span>
+                  </label>
+                  <label>
+                    <span>Start → first tick minimum (ms)</span>
+                    <input id="startDelayMin" type="number" min="500" max="60000" step="10" value="1000" />
+                  </label>
+                  <label>
+                    <span>Start → first tick maximum (ms)</span>
+                    <input id="startDelayMax" type="number" min="500" max="60000" step="10" value="1000" />
+                  </label>
+                  <label>
+                    <span>ISI minimum (ms)</span>
+                    <input id="isiMin" type="number" min="0" max="60000" step="10" value="2000" />
+                  </label>
+                  <label>
+                    <span>ISI maximum (ms)</span>
+                    <input id="isiMax" type="number" min="0" max="60000" step="10" value="2000" />
+                  </label>
+                  <label class="wide-field">
+                    <span>Random seed <small>(leave blank to generate)</small></span>
+                    <input id="seedInput" type="text" maxlength="80" placeholder="e.g. pilot-01" />
+                  </label>
+                </div>
+                <p class="note">Base durations are sampled log-uniformly. Pair order, Start-to-first-tick delay, and ISI are randomized independently inside their configured bounds. Equal bounds produce fixed timing. Start-to-first-tick includes the 500 ms audio pre-roll.</p>
+              </div>
+            </section>
+
+            <aside class="panel audio-panel">
+              <div class="section-heading">
+                <h3>Audio</h3>
+                <span class="chip quiet" id="sampleRateLabel">Not initialized</span>
+              </div>
+              <label class="volume-row">
+                <span>Click level</span>
+                <span id="volumeValue">45%</span>
+                <input id="volumeSlider" type="range" min="2" max="100" value="45" />
+              </label>
+              <label class="click-duration-row">
+                <span>Click duration (ms)</span>
+                <input id="clickDuration" type="number" min="0.1" max="5" step="0.1" value="1.0" />
+              </label>
+              <button class="button secondary full" id="testAudioButton">Play test pair</button>
+              <p class="safety-note">Start quietly. Getty used 0.1 ms clicks; 1.0 ms is easier to hear but is a modified replication.</p>
+              <div class="timing-stack">
+                <div><span>Foreperiod</span><strong>1,000 ms</strong></div>
+                <div><span>Audio pre/post-roll</span><strong>500 / 500 ms</strong></div>
+                <div><span>Between intervals</span><strong>2,000 ms</strong></div>
+                <div><span>Intertrial interval</span><strong>3,000 ms</strong></div>
+              </div>
+            </aside>
+          </div>
+
+          <div class="start-row">
+            <label class="participant-field">
+              <span>Participant ID</span>
+              <input id="participantId" type="text" maxlength="80" placeholder="P001" />
+            </label>
+            <button class="button primary" id="startButton">Create experiment</button>
+          </div>
+          <p class="error-message" id="setupError" role="alert"></p>
+        </section>
+
+        <section id="runView" class="view" hidden>
+          <div class="run-header">
+            <div>
+              <p class="eyebrow" id="runModeLabel">GETTY 1975</p>
+              <h2 id="sessionTitle">Session</h2>
+              <p class="run-subtitle" id="sessionSubtitle"></p>
+            </div>
+            <div class="header-actions">
+              <button class="button ghost" id="pauseButton">Pause</button>
+              <button class="button ghost" id="exportCsvHeaderButton">CSV</button>
+              <button class="button ghost" id="exportHeaderButton">JSON</button>
+            </div>
+          </div>
+
+          <div class="progress-track" aria-label="Session progress">
+            <div class="progress-fill" id="progressFill"></div>
+          </div>
+          <div class="progress-meta">
+            <span id="trialProgress">Trial 0 of 0</span>
+            <span id="sessionProgress"></span>
+          </div>
+
+          <section class="trial-stage" id="trialStage">
+            <div class="warning-light" id="warningLight" aria-hidden="true"></div>
+            <div class="stage-content">
+              <p class="phase-label" id="phaseLabel">Ready</p>
+              <h3 id="phaseInstruction">Press start when you are ready.</h3>
+              <button class="button primary large" id="beginTrialsButton">Start trials</button>
+
+              <div class="response-buttons" id="responseButtons" hidden>
+                <button class="response-button" data-response="1">
+                  <span class="keycap">1</span>
+                  <span>First interval</span>
+                </button>
+                <button class="response-button" data-response="2">
+                  <span class="keycap">2</span>
+                  <span>Second interval</span>
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <div class="run-footer">
+            <span>No correctness feedback is shown.</span>
+            <span id="storageUsage"></span>
+          </div>
+        </section>
+
+        <section id="summaryView" class="view" hidden>
+          <div class="summary-card">
+            <p class="eyebrow">RUN COMPLETE</p>
+            <h2 id="summaryTitle">Session saved</h2>
+            <p id="summaryText"></p>
+            <div class="summary-stats">
+              <div><strong id="summaryAnswers">0</strong><span>answers stored</span></div>
+              <div><strong id="summaryDuration">0 min</strong><span>active elapsed time</span></div>
+              <div><strong id="summarySize">0 KB</strong><span>local data</span></div>
+            </div>
+            <div class="summary-actions">
+              <button class="button primary" id="nextSessionButton">Next session</button>
+              <button class="button secondary" id="downloadCsvButton">Download CSV</button>
+              <button class="button secondary" id="downloadJsonButton">Download JSON</button>
+            </div>
+            <button class="button ghost" id="newExperimentButton">Keep this experiment and create another</button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="pauseDialog">
+      <form method="dialog" class="dialog-card">
+        <p class="eyebrow">PAUSED</p>
+        <h2 id="pauseDialogTitle">Your place is saved</h2>
+        <p id="pauseDialogText">The current unanswered trial will be presented again when you resume.</p>
+        <div class="dialog-actions">
+          <button class="button primary" value="resume" id="resumeDialogButton">Resume</button>
+          <button class="button secondary" value="export" id="exportDialogButton">Download JSON</button>
+          <button class="button ghost" value="setup" id="setupDialogButton">Back to setup</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>
