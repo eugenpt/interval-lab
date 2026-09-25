@@ -138,12 +138,20 @@
                     <span>ISI maximum (ms)</span>
                     <input id="isiMax" type="number" min="0" max="60000" step="10" value="2000" />
                   </label>
+                  <label>
+                    <span>After-answer pause minimum (ms)</span>
+                    <input id="postResponseDelayMin" type="number" min="0" max="60000" step="10" value="3000" />
+                  </label>
+                  <label>
+                    <span>After-answer pause maximum (ms)</span>
+                    <input id="postResponseDelayMax" type="number" min="0" max="60000" step="10" value="3000" />
+                  </label>
                   <label class="wide-field">
                     <span>Random seed <small>(leave blank to generate)</small></span>
                     <input id="seedInput" type="text" maxlength="80" placeholder="e.g. pilot-01" />
                   </label>
                 </div>
-                <p class="note">Base durations are sampled log-uniformly. Pair order and Start-to-first-tick delay are randomized independently. With a separate ISI, its duration is sampled inside the configured bounds and playback uses four clicks. With no ISI, the intervals share one middle boundary click and playback uses three clicks. Start-to-first-tick includes the 500 ms audio pre-roll.</p>
+                <p class="note">Base durations are sampled log-uniformly. Pair order, Start-to-first-tick delay, ISI, and after-answer pause are sampled independently inside their configured bounds. Equal bounds produce fixed timing. With no ISI, the intervals share one middle boundary click and playback uses three clicks. Start-to-first-tick includes the 500 ms audio pre-roll.</p>
               </div>
             </section>
 
@@ -167,7 +175,7 @@
                 <div><span>Getty foreperiod</span><strong>1,000 ms</strong></div>
                 <div><span>Audio pre/post-roll</span><strong>500 / 500 ms</strong></div>
                 <div><span>Getty ISI</span><strong>2,000 ms</strong></div>
-                <div><span>Intertrial interval</span><strong>3,000 ms</strong></div>
+                <div><span>Getty intertrial interval</span><strong>3,000 ms</strong></div>
               </div>
             </aside>
           </div>
@@ -264,6 +272,6 @@
       </form>
     </dialog>
 
-    <script src="./app.js?v=1.4.0" defer></script>
+    <script src="./app.js?v=1.5.0" defer></script>
   </body>
 </html>

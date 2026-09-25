@@ -4,8 +4,8 @@
   const LEGACY_STORAGE_KEY = "interval-lab-state-v1";
   const EXPERIMENT_KEY_PREFIX = "interval-lab-experiment-v1:";
   const CURRENT_EXPERIMENT_KEY = "interval-lab-current-experiment-v1";
-  const SCHEMA_VERSION = 4;
-  const APP_VERSION = "1.4.0";
+  const SCHEMA_VERSION = 5;
+  const APP_VERSION = "1.5.0";
   const DEFAULT_CLICK_DURATION_MS = 1.0;
   const PRE_ROLL_MS = 500;
   const POST_ROLL_MS = 500;
@@ -33,7 +33,8 @@
 
   const GETTY_TRIAL_SCHEMA = Object.freeze(["interval_1_ms", "interval_2_ms"]);
   const RANDOMIZED_TRIAL_SCHEMA = Object.freeze([
-    "interval_1_ms", "interval_2_ms", "interstimulus_ms", "start_to_first_tick_ms"
+    "interval_1_ms", "interval_2_ms", "interstimulus_ms", "start_to_first_tick_ms",
+    "post_response_delay_ms"
   ]);
   const ANSWER_SCHEMA = Object.freeze([
     "response", "answered_at_unix_ms", "response_time_ms", "sample_rate_hz"
@@ -51,7 +52,8 @@
       "setupView", "runView", "summaryView", "saveIndicator", "resumeButton", "gettyConfig",
       "randomizedConfig", "randomTrialEstimate", "randomTrials", "equalPercent", "minDuration",
       "maxDuration", "minDifference", "maxDifference", "infiniteTrials", "requireTrialStart",
-      "startDelayMin", "startDelayMax", "sharedBoundary", "isiMin", "isiMax", "seedInput", "sampleRateLabel", "volumeSlider",
+      "startDelayMin", "startDelayMax", "sharedBoundary", "isiMin", "isiMax",
+      "postResponseDelayMin", "postResponseDelayMax", "seedInput", "sampleRateLabel", "volumeSlider",
       "volumeValue", "clickDuration", "testAudioButton", "participantId", "startButton", "setupError",
       "importJsonButton", "importJsonInput", "savedExperimentRow", "savedExperimentSelect", "removeExperimentButton",
       "runModeLabel", "sessionTitle", "sessionSubtitle", "pauseButton", "exportCsvHeaderButton", "exportHeaderButton", "progressFill",
@@ -157,11 +159,16 @@
       delete config.foreperiodMs;
       delete config.interstimulusMs;
     }
-    return {
+    return migrateV4({
       ...oldState,
-      schemaVersion: SCHEMA_VERSION,
-      appVersion: APP_VERSION,
-      dataSchema: dataSchemaForMode(oldState.mode),
+      schemaVersion: 4,
+      appVersion: "1.4.0",
+      dataSchema: {
+        trial: randomized
+          ? ["interval_1_ms", "interval_2_ms", "interstimulus_ms", "start_to_first_tick_ms"]
+          : GETTY_TRIAL_SCHEMA,
+        answer: ANSWER_SCHEMA
+      },
       config,
       sessions: oldState.sessions.map((session) => ({
         ...session,
@@ -170,18 +177,58 @@
           : session.trials
       })),
       _migrated: true
-    };
+    });
   }
 
   function migrateV3(oldState) {
+    return migrateV4({
+      ...oldState,
+      schemaVersion: 4,
+      appVersion: "1.4.0",
+      dataSchema: {
+        trial: oldState.mode === "randomized"
+          ? ["interval_1_ms", "interval_2_ms", "interstimulus_ms", "start_to_first_tick_ms"]
+          : GETTY_TRIAL_SCHEMA,
+        answer: ANSWER_SCHEMA
+      },
+      config: oldState.mode === "randomized"
+        ? { ...oldState.config, intervalBoundaryMode: "separated" }
+        : oldState.config,
+      _migrated: true
+    });
+  }
+
+  function migrateV4(oldState) {
+    if (oldState.mode !== "randomized") {
+      return {
+        ...oldState,
+        schemaVersion: SCHEMA_VERSION,
+        appVersion: APP_VERSION,
+        dataSchema: dataSchemaForMode(oldState.mode),
+        _migrated: true
+      };
+    }
+    const postResponseDelayMs = Number.isFinite(oldState.config?.intertrialMs)
+      ? oldState.config.intertrialMs
+      : INTERTRIAL_MS;
+    const config = {
+      ...oldState.config,
+      postResponseDelayMinMs: postResponseDelayMs,
+      postResponseDelayMaxMs: postResponseDelayMs
+    };
+    delete config.intertrialMs;
     return {
       ...oldState,
       schemaVersion: SCHEMA_VERSION,
       appVersion: APP_VERSION,
       dataSchema: dataSchemaForMode(oldState.mode),
-      config: oldState.mode === "randomized"
-        ? { ...oldState.config, intervalBoundaryMode: "separated" }
-        : oldState.config,
+      config,
+      sessions: oldState.sessions.map((session) => ({
+        ...session,
+        trials: Array.isArray(session.trials)
+          ? session.trials.map((trial) => [...trial, postResponseDelayMs])
+          : session.trials
+      })),
       _migrated: true
     };
   }
@@ -192,6 +239,7 @@
 
   function normalizeState(parsed) {
     if (parsed?.schemaVersion === SCHEMA_VERSION) return parsed;
+    if (parsed?.schemaVersion === 4) return migrateV4(parsed);
     if (parsed?.schemaVersion === 3) return migrateV3(parsed);
     if (parsed?.schemaVersion === 2) return migrateV2(parsed);
     if (parsed?.schemaVersion === 1) return migrateV1(parsed);
@@ -225,14 +273,19 @@
       if (!config.infiniteTrials && (!Number.isInteger(config.trialCount) || config.trialCount < 1)) {
         throw new Error("The randomized trial count is invalid.");
       }
-      for (const field of ["startToFirstTickMinMs", "startToFirstTickMaxMs", "interstimulusMinMs", "interstimulusMaxMs"]) {
+      for (const field of [
+        "startToFirstTickMinMs", "startToFirstTickMaxMs",
+        "interstimulusMinMs", "interstimulusMaxMs",
+        "postResponseDelayMinMs", "postResponseDelayMaxMs"
+      ]) {
         if (!Number.isInteger(config[field]) || config[field] < 0 || config[field] > 60000) {
           throw new Error(`The randomized ${field} value is invalid.`);
         }
       }
       if (config.startToFirstTickMinMs < (config.preRollMs ?? 0)
           || config.startToFirstTickMaxMs < config.startToFirstTickMinMs
-          || config.interstimulusMaxMs < config.interstimulusMinMs) {
+          || config.interstimulusMaxMs < config.interstimulusMinMs
+          || config.postResponseDelayMaxMs < config.postResponseDelayMinMs) {
         throw new Error("The randomized timing bounds are invalid.");
       }
       if (config.intervalBoundaryMode === "shared"
@@ -264,7 +317,10 @@
               && trial[2] <= experiment.config.interstimulusMaxMs
               && Number.isInteger(trial[3])
               && trial[3] >= experiment.config.startToFirstTickMinMs
-              && trial[3] <= experiment.config.startToFirstTickMaxMs)))) {
+              && trial[3] <= experiment.config.startToFirstTickMaxMs
+              && Number.isInteger(trial[4])
+              && trial[4] >= experiment.config.postResponseDelayMinMs
+              && trial[4] <= experiment.config.postResponseDelayMaxMs)))) {
         throw new Error(`Session ${sessionIndex + 1} contains an invalid trial.`);
       }
       if (!session.answers.every((answer) => Array.isArray(answer)
@@ -465,7 +521,9 @@
       startToFirstTickMaxMs: Number(el.startDelayMax.value),
       intervalBoundaryMode: el.sharedBoundary.checked ? "shared" : "separated",
       interstimulusMinMs: el.sharedBoundary.checked ? 0 : Number(el.isiMin.value),
-      interstimulusMaxMs: el.sharedBoundary.checked ? 0 : Number(el.isiMax.value)
+      interstimulusMaxMs: el.sharedBoundary.checked ? 0 : Number(el.isiMax.value),
+      postResponseDelayMinMs: Number(el.postResponseDelayMin.value),
+      postResponseDelayMaxMs: Number(el.postResponseDelayMax.value)
     };
     if (!config.infiniteTrials
         && (!Number.isInteger(config.trialCount) || config.trialCount < 20 || config.trialCount > 5000)) {
@@ -485,7 +543,8 @@
     }
     const timingBounds = [
       [config.startToFirstTickMinMs, config.startToFirstTickMaxMs, "Start-to-first-tick delay"],
-      [config.interstimulusMinMs, config.interstimulusMaxMs, "ISI"]
+      [config.interstimulusMinMs, config.interstimulusMaxMs, "ISI"],
+      [config.postResponseDelayMinMs, config.postResponseDelayMaxMs, "After-answer pause"]
     ];
     for (const [minimum, maximum, label] of timingBounds) {
       if (!Number.isInteger(minimum) || !Number.isInteger(maximum)
@@ -536,7 +595,8 @@
       pair[0],
       pair[1],
       randomInteger(config.interstimulusMinMs, config.interstimulusMaxMs, rng),
-      randomInteger(config.startToFirstTickMinMs, config.startToFirstTickMaxMs, rng)
+      randomInteger(config.startToFirstTickMinMs, config.startToFirstTickMaxMs, rng),
+      randomInteger(config.postResponseDelayMinMs, config.postResponseDelayMaxMs, rng)
     ];
   }
 
@@ -604,7 +664,12 @@
 
   function createRandomExperiment(participantId, audio, randomConfig, seed) {
     const now = preciseEpochMs();
-    const { foreperiodMs: _foreperiodMs, interstimulusMs: _interstimulusMs, ...sharedTiming } = commonConfig();
+    const {
+      foreperiodMs: _foreperiodMs,
+      interstimulusMs: _interstimulusMs,
+      intertrialMs: _intertrialMs,
+      ...sharedTiming
+    } = commonConfig();
     const config = {
       ...sharedTiming,
       ...randomConfig,
@@ -672,12 +737,14 @@
       return {
         interstimulusMs: trial[2],
         startToFirstTickMs: trial[3],
+        postResponseDelayMs: trial[4],
         intervalBoundaryMode: state.config.intervalBoundaryMode
       };
     }
     return {
       interstimulusMs: state.config.interstimulusMs,
       startToFirstTickMs: state.config.foreperiodMs + (state.config.preRollMs ?? 0),
+      postResponseDelayMs: state.config.intertrialMs,
       intervalBoundaryMode: "separated"
     };
   }
@@ -879,6 +946,8 @@
     busy = true;
     const session = currentSession();
     const trials = ensureSessionTrials();
+    const completedTrial = trials[session.answers.length];
+    const postResponseDelayMs = trialTiming(completedTrial).postResponseDelayMs;
     const rtMs = Math.round((performance.now() - responseOpenedAt) * 1000) / 1000;
     session.answers.push([response, preciseEpochMs(), rtMs, currentSampleRate]);
     if (!saveState()) {
@@ -894,14 +963,20 @@
     }
     updateRunHeader();
     el.responseButtons.hidden = true;
-    setTrialPhase("Saved", "Next trial in 3 seconds.");
+    const pauseSeconds = Math.round(postResponseDelayMs / 100) / 10;
+    setTrialPhase(
+      "Saved",
+      postResponseDelayMs > 0
+        ? `Next trial available in ${pauseSeconds.toLocaleString()} seconds.`
+        : "Preparing next trial."
+    );
 
     if (!isUnlimitedRandomized() && session.answers.length >= trials.length) {
       finishSession();
       return;
     }
     const token = ++runToken;
-    await delay(state.config.intertrialMs);
+    await delay(postResponseDelayMs);
     if (token !== runToken || state.status === "paused") return;
     busy = false;
     if (state.mode === "randomized" && state.config.requireTrialStart) {
@@ -979,6 +1054,7 @@
     const columns = [
       "experiment_id", "participant_id", "mode", "session_index", "trial_index",
       "interval_1_ms", "interval_2_ms", "boundary_mode", "interstimulus_ms", "start_to_first_tick_ms",
+      "post_response_delay_ms",
       "response", "answered_at_unix_ms",
       "response_time_ms", "sample_rate_hz"
     ];
@@ -993,6 +1069,7 @@
       boundary_mode: state.mode === "randomized" ? state.config.intervalBoundaryMode : "separated",
       interstimulus_ms: state.mode === "randomized" ? trial[2] : null,
       start_to_first_tick_ms: state.mode === "randomized" ? trial[3] : null,
+      post_response_delay_ms: state.mode === "randomized" ? trial[4] : null,
       response: answer[0],
       answered_at_unix_ms: answer[1],
       response_time_ms: answer[2],
