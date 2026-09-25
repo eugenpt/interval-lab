@@ -4,8 +4,9 @@
   const LEGACY_STORAGE_KEY = "interval-lab-state-v1";
   const EXPERIMENT_KEY_PREFIX = "interval-lab-experiment-v1:";
   const CURRENT_EXPERIMENT_KEY = "interval-lab-current-experiment-v1";
-  const SCHEMA_VERSION = 6;
-  const APP_VERSION = "1.6.0";
+  const SETUP_PREFERENCES_KEY = "interval-lab-last-setup-v1";
+  const SCHEMA_VERSION = 7;
+  const APP_VERSION = "1.7.0";
   const DEFAULT_CLICK_DURATION_MS = 1.0;
   const PRE_ROLL_MS = 500;
   const POST_ROLL_MS = 500;
@@ -74,9 +75,9 @@
       "adaptiveRequireTrialStart", "adaptiveStartDelayMin", "adaptiveStartDelayMax", "adaptiveSharedBoundary",
       "adaptiveIsiMin", "adaptiveIsiMax", "adaptivePostDelayMin", "adaptivePostDelayMax", "adaptiveSeedInput",
       "adaptiveMuGridPoints", "adaptiveSigmaGridPoints", "adaptiveMaxSame", "adaptiveNearTie",
-      "adaptiveExplorationTrials", "adaptiveExplorationProbability",
+      "adaptiveExplorationTrials", "adaptiveExplorationProbability", "adaptivePersistentExplorationProbability",
       "volumeValue", "clickDuration", "testAudioButton", "participantId", "startButton", "setupError",
-      "importJsonButton", "importJsonInput", "savedExperimentRow", "savedExperimentSelect", "removeExperimentButton",
+      "importJsonButton", "importJsonInput", "savedExperimentRow", "savedExperimentSelect", "loadParametersButton", "removeExperimentButton",
       "runModeLabel", "sessionTitle", "sessionSubtitle", "pauseButton", "exportCsvHeaderButton", "exportHeaderButton", "progressFill",
       "trialProgress", "sessionProgress", "trialStage", "warningLight", "phaseLabel", "phaseInstruction",
       "beginTrialsButton", "responseButtons", "storageUsage", "summaryTitle", "summaryText", "summaryAnswers",
@@ -88,6 +89,20 @@
       "resumeDialogButton", "exportDialogButton", "setupDialogButton"
     ].map((id) => [id, document.getElementById(id)])
   );
+
+  const SETUP_PREFERENCE_FIELDS = Object.freeze([
+    "randomTrials", "infiniteTrials", "equalPercent", "minDuration", "maxDuration",
+    "minDifference", "maxDifference", "requireTrialStart", "startDelayMin", "startDelayMax",
+    "sharedBoundary", "isiMin", "isiMax", "postResponseDelayMin", "postResponseDelayMax",
+    "adaptiveVariant", "adaptiveGettyStandard", "adaptiveControl", "adaptiveComparisonMin",
+    "adaptiveComparisonMax", "adaptiveStoppingMode", "adaptiveFixedTrials", "adaptiveMinTrials",
+    "adaptiveMaxTrials", "adaptiveMuCiTarget", "adaptiveSigmaRelativeCiTarget",
+    "adaptiveRequireTrialStart", "adaptiveStartDelayMin", "adaptiveStartDelayMax",
+    "adaptiveSharedBoundary", "adaptiveIsiMin", "adaptiveIsiMax", "adaptivePostDelayMin",
+    "adaptivePostDelayMax", "adaptiveMuGridPoints", "adaptiveSigmaGridPoints", "adaptiveMaxSame",
+    "adaptiveNearTie", "adaptiveExplorationTrials", "adaptiveExplorationProbability",
+    "adaptivePersistentExplorationProbability", "volumeSlider", "clickDuration"
+  ]);
 
   let state = loadState();
   let audioContext = null;
@@ -267,12 +282,56 @@
     };
   }
 
+  function migrateV6(oldState) {
+    if (oldState.mode !== "adaptive") {
+      return {
+        ...oldState,
+        schemaVersion: SCHEMA_VERSION,
+        appVersion: APP_VERSION,
+        dataSchema: dataSchemaForMode(oldState.mode),
+        _migrated: true
+      };
+    }
+    const algorithmVersion = window.IntervalLabAdaptive.ALGORITHM_VERSION;
+    const explorationProbability = Number.isFinite(oldState.config?.estimator?.explorationProbability)
+      ? oldState.config.estimator.explorationProbability
+      : 0;
+    return {
+      ...oldState,
+      schemaVersion: SCHEMA_VERSION,
+      appVersion: APP_VERSION,
+      dataSchema: dataSchemaForMode(oldState.mode),
+      config: {
+        ...oldState.config,
+        estimator: {
+          ...oldState.config.estimator,
+          algorithmVersion,
+          explorationProbability
+        }
+      },
+      sessions: oldState.sessions.map((session) => ({
+        ...session,
+        adaptiveState: {
+          ...session.adaptiveState,
+          algorithmVersion,
+          config: {
+            ...session.adaptiveState.config,
+            algorithmVersion,
+            explorationProbability
+          }
+        }
+      })),
+      _migrated: true
+    };
+  }
+
   function experimentStorageKey(experimentId) {
     return `${EXPERIMENT_KEY_PREFIX}${experimentId}`;
   }
 
   function normalizeState(parsed) {
     if (parsed?.schemaVersion === SCHEMA_VERSION) return parsed;
+    if (parsed?.schemaVersion === 6) return migrateV6(parsed);
     if (parsed?.schemaVersion === 5) return migrateV5(parsed);
     if (parsed?.schemaVersion === 4) return migrateV4(parsed);
     if (parsed?.schemaVersion === 3) return migrateV3(parsed);
@@ -346,7 +405,10 @@
         throw new Error("The adaptive comparison values must be positive, unique, sorted, and internally consistent.");
       }
       if (!(config.muCiTargetMs > 0) || !(config.sigmaRelativeCiTarget > 0)
-          || config.estimator?.algorithmVersion !== window.IntervalLabAdaptive?.ALGORITHM_VERSION) {
+          || config.estimator?.algorithmVersion !== window.IntervalLabAdaptive?.ALGORITHM_VERSION
+          || !Number.isFinite(config.estimator?.explorationProbability)
+          || config.estimator.explorationProbability < 0
+          || config.estimator.explorationProbability > 1) {
         throw new Error("The adaptive precision targets or estimator version are invalid.");
       }
       for (const field of [
@@ -630,6 +692,115 @@
       : `${Number.isFinite(count) ? count.toLocaleString() : "—"} trials`;
   }
 
+  function setSetupControl(id, value) {
+    const control = el[id];
+    if (!control || value === null || value === undefined) return;
+    if (control.type === "checkbox") control.checked = Boolean(value);
+    else control.value = String(value);
+  }
+
+  function currentSetupPreferences() {
+    const fields = {};
+    SETUP_PREFERENCE_FIELDS.forEach((id) => {
+      const control = el[id];
+      fields[id] = control.type === "checkbox" ? control.checked : control.value;
+    });
+    return {
+      version: 1,
+      mode: getSelectedMode(),
+      fields,
+      savedAtMs: preciseEpochMs()
+    };
+  }
+
+  function saveSetupPreferences() {
+    try {
+      localStorage.setItem(SETUP_PREFERENCES_KEY, JSON.stringify(currentSetupPreferences()));
+    } catch (error) {
+      console.warn("Could not save the last-used setup parameters", error);
+    }
+  }
+
+  function loadSetupPreferences() {
+    try {
+      const preferences = JSON.parse(localStorage.getItem(SETUP_PREFERENCES_KEY));
+      return preferences?.version === 1 && preferences.fields ? preferences : null;
+    } catch (error) {
+      console.warn("Could not load the last-used setup parameters", error);
+      return null;
+    }
+  }
+
+  function applySetupPreferences(preferences) {
+    if (!preferences) return false;
+    SETUP_PREFERENCE_FIELDS.forEach((id) => setSetupControl(id, preferences.fields[id]));
+    setMode(["getty", "randomized", "adaptive"].includes(preferences.mode) ? preferences.mode : "getty");
+    el.volumeValue.textContent = `${el.volumeSlider.value}%`;
+    updateRandomTrialControls();
+    updateBoundaryControls();
+    updateAdaptiveControls();
+    return true;
+  }
+
+  function applyExperimentParameters(experiment) {
+    if (!experiment) return false;
+    const config = experiment.config;
+    setMode(experiment.mode);
+    applySavedAudioSettings(experiment);
+    if (experiment.mode === "randomized") {
+      setSetupControl("infiniteTrials", config.infiniteTrials);
+      if (Number.isInteger(config.trialCount)) setSetupControl("randomTrials", config.trialCount);
+      setSetupControl("equalPercent", config.equalPercent);
+      setSetupControl("minDuration", config.minDurationMs);
+      setSetupControl("maxDuration", config.maxDurationMs);
+      setSetupControl("minDifference", config.minDifferencePercent);
+      setSetupControl("maxDifference", config.maxDifferencePercent);
+      setSetupControl("requireTrialStart", config.requireTrialStart);
+      setSetupControl("startDelayMin", config.startToFirstTickMinMs);
+      setSetupControl("startDelayMax", config.startToFirstTickMaxMs);
+      setSetupControl("sharedBoundary", config.intervalBoundaryMode === "shared");
+      setSetupControl("isiMin", config.interstimulusMinMs);
+      setSetupControl("isiMax", config.interstimulusMaxMs);
+      setSetupControl("postResponseDelayMin", config.postResponseDelayMinMs);
+      setSetupControl("postResponseDelayMax", config.postResponseDelayMaxMs);
+    } else if (experiment.mode === "adaptive") {
+      const estimator = config.estimator || {};
+      setSetupControl("adaptiveVariant", config.adaptiveVariant);
+      setSetupControl("adaptiveGettyStandard", config.standardMs);
+      setSetupControl("adaptiveControl", config.standardMs);
+      setSetupControl("adaptiveComparisonMin", config.candidateValues?.[0]);
+      setSetupControl("adaptiveComparisonMax", config.candidateValues?.[config.candidateValues.length - 1]);
+      setSetupControl("adaptiveStoppingMode", config.stoppingMode);
+      setSetupControl("adaptiveFixedTrials", config.fixedTrials);
+      setSetupControl("adaptiveMinTrials", config.minTrials);
+      setSetupControl("adaptiveMaxTrials", config.maxTrials);
+      setSetupControl("adaptiveMuCiTarget", config.muCiTargetMs);
+      setSetupControl("adaptiveSigmaRelativeCiTarget", config.sigmaRelativeCiTarget * 100);
+      setSetupControl("adaptiveRequireTrialStart", config.requireTrialStart);
+      setSetupControl("adaptiveStartDelayMin", config.startToFirstTickMinMs);
+      setSetupControl("adaptiveStartDelayMax", config.startToFirstTickMaxMs);
+      setSetupControl("adaptiveSharedBoundary", config.intervalBoundaryMode === "shared");
+      setSetupControl("adaptiveIsiMin", config.interstimulusMinMs);
+      setSetupControl("adaptiveIsiMax", config.interstimulusMaxMs);
+      setSetupControl("adaptivePostDelayMin", config.postResponseDelayMinMs);
+      setSetupControl("adaptivePostDelayMax", config.postResponseDelayMaxMs);
+      setSetupControl("adaptiveMuGridPoints", estimator.muGridPoints);
+      setSetupControl("adaptiveSigmaGridPoints", estimator.logSigmaGridPoints);
+      setSetupControl("adaptiveMaxSame", estimator.maxSameComparisonConsecutive);
+      setSetupControl("adaptiveNearTie", estimator.nearTieFraction * 100);
+      setSetupControl("adaptiveExplorationTrials", estimator.earlyExplorationTrials);
+      setSetupControl("adaptiveExplorationProbability", estimator.earlyExplorationProbability * 100);
+      setSetupControl("adaptivePersistentExplorationProbability", (estimator.explorationProbability || 0) * 100);
+    }
+    el.seedInput.value = "";
+    el.adaptiveSeedInput.value = "";
+    updateRandomTrialControls();
+    updateBoundaryControls();
+    updateAdaptiveControls();
+    saveSetupPreferences();
+    return true;
+  }
+
   function readAudioSettings() {
     const level = Number(el.volumeSlider.value) / 100;
     const clickDurationMs = Number(el.clickDuration.value);
@@ -745,6 +916,7 @@
         nearTieFraction: Number(el.adaptiveNearTie.value) / 100,
         earlyExplorationTrials: Number(el.adaptiveExplorationTrials.value),
         earlyExplorationProbability: Number(el.adaptiveExplorationProbability.value) / 100,
+        explorationProbability: Number(el.adaptivePersistentExplorationProbability.value) / 100,
         credibleLevel: 0.95
       }
     };
@@ -788,7 +960,9 @@
     }
     if (config.estimator.nearTieFraction < 0 || config.estimator.nearTieFraction > 0.25
         || config.estimator.earlyExplorationProbability < 0
-        || config.estimator.earlyExplorationProbability > 1) {
+        || config.estimator.earlyExplorationProbability > 1
+        || config.estimator.explorationProbability < 0
+        || config.estimator.explorationProbability > 1) {
       throw new Error("Adaptive exploration settings are out of range.");
     }
     return config;
@@ -1220,21 +1394,31 @@
     }
     add("polyline", { points: curvePoints.join(" "), fill: "none", stroke: "#5df2b5", "stroke-width": 3 });
 
-    const observed = new Map();
-    session.answers.forEach((answer, index) => {
-      const comparison = session.trials[index][1];
-      const entry = observed.get(comparison) || { count: 0, longer: 0 };
-      entry.count += 1;
-      if (answer[0] === 2) entry.longer += 1;
-      observed.set(comparison, entry);
-    });
-    observed.forEach((entry, comparison) => {
-      const radius = Math.min(9, 4 + Math.sqrt(entry.count));
-      add("circle", {
-        cx: x(comparison), cy: y(entry.longer / entry.count), r: radius,
-        fill: "#ffc45d", stroke: "#07110f", "stroke-width": 2
+    if (state.config.adaptiveVariant === "getty11") {
+      const observed = new Map();
+      session.answers.forEach((answer, index) => {
+        const comparison = session.trials[index][1];
+        const entry = observed.get(comparison) || { count: 0, longer: 0 };
+        entry.count += 1;
+        if (answer[0] === 2) entry.longer += 1;
+        observed.set(comparison, entry);
       });
-    });
+      observed.forEach((entry, comparison) => {
+        const radius = Math.min(9, 4 + Math.sqrt(entry.count));
+        add("circle", {
+          cx: x(comparison), cy: y(entry.longer / entry.count), r: radius,
+          fill: "#ffc45d", stroke: "#07110f", "stroke-width": 2
+        });
+      });
+    } else {
+      session.answers.forEach((answer, index) => {
+        const comparison = session.trials[index][1];
+        add("circle", {
+          cx: x(comparison), cy: y(answer[0] === 2 ? 1 : 0), r: 4.5,
+          fill: "#ffc45d", "fill-opacity": 0.55, stroke: "#07110f", "stroke-width": 1
+        });
+      });
+    }
     add("text", { x: (left + width - right) / 2, y: height - 1, fill: muted, "font-size": 12, "text-anchor": "middle" }, "Comparison interval");
     add("text", { x: 15, y: (top + height - bottom) / 2, fill: muted, "font-size": 12, "text-anchor": "middle", transform: `rotate(-90 15 ${(top + height - bottom) / 2})` }, "P(comparison longer)");
   }
@@ -1260,7 +1444,10 @@
     el.diagnosticGain.textContent = formatEstimate(trial[6], 4);
     el.adaptivePrecisionBadge.textContent = precision.met ? "Target reached" : "Estimating…";
     el.adaptivePrecisionBadge.classList.toggle("target-met", precision.met);
-    el.adaptivePrecisionText.textContent = `Current 95% CI widths: μ ${formatEstimate(precision.muWidthMs)} ms (target ≤ ${formatEstimate(state.config.muCiTargetMs)} ms); σ ${formatEstimate(precision.sigmaRelativeWidth * 100)}% of its mean (target ≤ ${formatEstimate(state.config.sigmaRelativeCiTarget * 100)}%). The curve and amber observed proportions include completed trials only.`;
+    const observationDescription = state.config.adaptiveVariant === "getty11"
+      ? "amber observed proportions"
+      : "amber individual binary trial responses";
+    el.adaptivePrecisionText.textContent = `Current 95% CI widths: μ ${formatEstimate(precision.muWidthMs)} ms (target ≤ ${formatEstimate(state.config.muCiTargetMs)} ms); σ ${formatEstimate(precision.sigmaRelativeWidth * 100)}% of its mean (target ≤ ${formatEstimate(state.config.sigmaRelativeCiTarget * 100)}%). The curve and ${observationDescription} include completed trials only.`;
     el.stopAdaptiveButton.textContent = precision.met
       ? "Stop now — target reached"
       : "Stop and save current estimate";
@@ -1630,11 +1817,11 @@
     showRunReady();
   }
 
-  function applySavedAudioSettings() {
-    if (!state) return;
-    el.volumeSlider.value = Math.round((state.audio?.level ?? 0.45) * 100);
+  function applySavedAudioSettings(experiment = state) {
+    if (!experiment) return;
+    el.volumeSlider.value = Math.round((experiment.audio?.level ?? 0.45) * 100);
     el.volumeValue.textContent = `${el.volumeSlider.value}%`;
-    el.clickDuration.value = String(state.audio?.clickDurationMs ?? DEFAULT_CLICK_DURATION_MS);
+    el.clickDuration.value = String(experiment.audio?.clickDurationMs ?? DEFAULT_CLICK_DURATION_MS);
   }
 
   function resumeSavedExperiment() {
@@ -1658,6 +1845,14 @@
     updateSetupFromSavedState();
     updateStorageUsage();
     return true;
+  }
+
+  function loadSelectedExperimentParameters() {
+    const selected = readStoredExperiment(el.savedExperimentSelect.value);
+    if (!selected || !applyExperimentParameters(selected)) return;
+    const originalLabel = "Use parameters";
+    el.loadParametersButton.textContent = "Parameters loaded";
+    window.setTimeout(() => { el.loadParametersButton.textContent = originalLabel; }, 1600);
   }
 
   function importedExperiment(parsed) {
@@ -1758,6 +1953,7 @@
           : createRandomExperiment(participantId, audio, validateRandomConfig(), seed);
       ensureSessionTrials(false);
       if (!saveState()) throw new Error("The new experiment could not be stored because browser storage is full. Export or remove another experiment and try again.");
+      saveSetupPreferences();
       showRunReady();
     } catch (error) {
       state = previousState;
@@ -1831,6 +2027,7 @@
     el.importJsonButton.addEventListener("click", () => el.importJsonInput.click());
     el.importJsonInput.addEventListener("change", () => loadExperimentJson(el.importJsonInput.files[0]));
     el.savedExperimentSelect.addEventListener("change", () => selectStoredExperiment(el.savedExperimentSelect.value));
+    el.loadParametersButton.addEventListener("click", loadSelectedExperimentParameters);
     el.removeExperimentButton.addEventListener("click", removeSelectedExperiment);
     el.resumeButton.addEventListener("click", resumeSavedExperiment);
     el.beginTrialsButton.addEventListener("click", async () => {
@@ -1878,8 +2075,13 @@
       showView("setup");
       updateSetupFromSavedState();
     });
+    el.setupView.addEventListener("change", (event) => {
+      if (event.target.closest("#savedExperimentRow") || event.target === el.importJsonInput) return;
+      saveSetupPreferences();
+    });
     window.addEventListener("beforeunload", () => {
       stopActiveAudio();
+      saveSetupPreferences();
       if (state && state.status === "running") {
         state.status = "paused";
         saveState();
@@ -1889,10 +2091,13 @@
 
   function init() {
     bindEvents();
-    setMode("getty");
-    updateRandomTrialControls();
-    updateBoundaryControls();
-    updateAdaptiveControls();
+    const restoredSetup = applySetupPreferences(loadSetupPreferences());
+    if (!restoredSetup) {
+      setMode("getty");
+      updateRandomTrialControls();
+      updateBoundaryControls();
+      updateAdaptiveControls();
+    }
     if (state?._migrated) {
       delete state._migrated;
       saveState();
@@ -1901,7 +2106,7 @@
     updateStorageUsage();
     if (state) {
       el.participantId.value = state.participantId || "";
-      applySavedAudioSettings();
+      if (!restoredSetup) applySavedAudioSettings();
     }
   }
 

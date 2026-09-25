@@ -41,6 +41,7 @@
             </label>
             <div class="saved-experiment-actions">
               <button class="button primary" id="resumeButton">Resume selected</button>
+              <button class="button secondary" id="loadParametersButton">Use parameters</button>
               <button class="button ghost" id="removeExperimentButton">Remove</button>
             </div>
           </div>
@@ -285,11 +286,15 @@
                     </label>
                     <label>
                       <span>Early exploration probability (%)</span>
-                      <input id="adaptiveExplorationProbability" type="number" min="0" max="100" step="1" value="10" />
+                      <input id="adaptiveExplorationProbability" type="number" min="0" max="100" step="1" value="0" />
+                    </label>
+                    <label>
+                      <span>Persistent exploration probability (%)</span>
+                      <input id="adaptivePersistentExplorationProbability" type="number" min="0" max="100" step="1" value="0" />
                     </label>
                   </div>
                 </details>
-                <p class="note">The first 11 trials provide shuffled full-range coverage. From trial 12 onward, the next comparison maximizes expected information about PSE μ and width σ jointly. The upcoming comparison is never shown in diagnostics.</p>
+                <p class="note">The first 11 trials provide shuffled full-range coverage. From trial 12 onward, the next comparison maximizes expected information about PSE μ and width σ jointly. Persistent exploration is off by default; when enabled, it favors underrepresented comparisons. The upcoming comparison is never shown in diagnostics.</p>
               </div>
             </section>
 
@@ -427,7 +432,7 @@
       </form>
     </dialog>
 
-    <script src="./adaptive.js?v=1.0.0" defer></script>
-    <script src="./app.js?v=1.6.0" defer></script>
+    <script src="./adaptive.js?v=2.0.0" defer></script>
+    <script src="./app.js?v=1.7.0" defer></script>
   </body>
 </html>

@@ -202,7 +202,7 @@ input:disabled { cursor: not-allowed; opacity: .48; }
 }
 .saved-experiment-row[hidden] { display: none; }
 .saved-experiment-field { flex: 1; min-width: 0; }
-.saved-experiment-actions { display: flex; gap: 10px; }
+.saved-experiment-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .start-row { align-items: end; margin-top: 20px; padding: 20px 0; border-top: 1px solid var(--line); }
 .participant-field { width: min(360px, 100%); }
 .error-message { min-height: 1.5em; margin: 0; color: var(--danger); font-size: .9rem; }
@@ -282,7 +282,7 @@ dialog::backdrop { background: rgba(2,8,7,.78); backdrop-filter: blur(8px); }
   .mode-switch, .setup-grid { grid-template-columns: 1fr; }
   .intro-row, .run-header, .start-row, .saved-experiment-row { align-items: stretch; flex-direction: column; }
   .start-row .button { width: 100%; }
-  .saved-experiment-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .saved-experiment-actions { display: grid; grid-template-columns: repeat(3, 1fr); }
   .participant-field { width: 100%; }
   .trial-stage { min-height: 420px; }
   .summary-stats { grid-template-columns: 1fr; }
@@ -295,6 +295,7 @@ dialog::backdrop { background: rgba(2,8,7,.78); backdrop-filter: blur(8px); }
   .panel { padding: 18px; }
   .trial-stage { min-height: 390px; }
   .run-footer { align-items: flex-start; flex-direction: column; }
+  .saved-experiment-actions { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

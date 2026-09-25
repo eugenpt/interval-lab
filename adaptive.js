@@ -6,7 +6,11 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function buildAdaptiveApi() {
   "use strict";
 
-  const ALGORITHM_VERSION = "bayes-eig-gaussian-v1";
+  const ALGORITHM_VERSION = "bayes-eig-gaussian-v2";
+  const COMPATIBLE_ALGORITHM_VERSIONS = new Set([
+    "bayes-eig-gaussian-v1",
+    ALGORITHM_VERSION
+  ]);
   const EPSILON = 1e-12;
 
   const DEFAULT_CONFIG = Object.freeze({
@@ -23,7 +27,10 @@
     maxSameComparisonConsecutive: 2,
     nearTieFraction: 0.01,
     earlyExplorationTrials: 25,
-    earlyExplorationProbability: 0.1
+    earlyExplorationProbability: 0.0,
+    // On every post-block trial, optionally sample with weight 1 / (count + 1).
+    // This remains disabled by default pending evidence that it improves robustness.
+    explorationProbability: 0.0
   });
 
   function clamp(value, minimum, maximum) {
@@ -264,6 +271,20 @@
       return count;
     }
 
+    weightedUnderrepresentedChoice(pool, counts) {
+      const weighted = pool.map((candidate) => ({
+        candidate,
+        weight: 1 / ((counts.get(candidate.comparisonMs) || 0) + 1)
+      }));
+      const totalWeight = weighted.reduce((sum, item) => sum + item.weight, 0);
+      let draw = this.rng.next() * totalWeight;
+      for (const item of weighted) {
+        draw -= item.weight;
+        if (draw <= 0) return item.candidate.comparisonMs;
+      }
+      return weighted[weighted.length - 1].candidate.comparisonMs;
+    }
+
     candidateScores() {
       const entropy = this.entropy();
       const weights = this.posteriorWeights();
@@ -293,13 +314,20 @@
         const allowed = scores.filter((candidate) =>
           this.consecutiveCount(candidate.comparisonMs) < this.config.maxSameComparisonConsecutive);
         const pool = allowed.length ? allowed : scores;
-        const inEarlyExploration = this.selectionCount < this.config.earlyExplorationTrials
+        const counts = new Map(this.candidateValues.map((value) => [value, 0]));
+        for (const item of this.history) {
+          counts.set(item.comparisonMs, (counts.get(item.comparisonMs) || 0) + 1);
+        }
+        const inPersistentExploration = this.config.explorationProbability > 0
+          && this.rng.next() < this.config.explorationProbability;
+        const inEarlyExploration = !inPersistentExploration
+          && this.selectionCount < this.config.earlyExplorationTrials
           && this.config.earlyExplorationProbability > 0
           && this.rng.next() < this.config.earlyExplorationProbability;
 
-        if (inEarlyExploration) {
-          const counts = new Map(this.candidateValues.map((value) => [value, 0]));
-          for (const item of this.history) counts.set(item.comparisonMs, (counts.get(item.comparisonMs) || 0) + 1);
+        if (inPersistentExploration) {
+          comparisonMs = this.weightedUnderrepresentedChoice(pool, counts);
+        } else if (inEarlyExploration) {
           const minimumCount = Math.min(...pool.map((candidate) => counts.get(candidate.comparisonMs) || 0));
           const exploratory = pool.filter((candidate) => (counts.get(candidate.comparisonMs) || 0) === minimumCount);
           comparisonMs = exploratory[this.rng.integer(exploratory.length)].comparisonMs;
@@ -372,17 +400,24 @@
     }
 
     static deserialize(serialized) {
-      if (!serialized || serialized.algorithmVersion !== ALGORITHM_VERSION) {
+      if (!serialized || !COMPATIBLE_ALGORITHM_VERSIONS.has(serialized.algorithmVersion)) {
         throw new Error("Unsupported adaptive estimator state.");
       }
+      const normalizedConfig = {
+        ...serialized.config,
+        algorithmVersion: ALGORITHM_VERSION,
+        explorationProbability: Number.isFinite(serialized.config?.explorationProbability)
+          ? serialized.config.explorationProbability
+          : 0
+      };
       const estimator = new AdaptivePsychometricEstimator(
-        { ...serialized.config, ...serialized.gridConfig },
+        { ...normalizedConfig, ...serialized.gridConfig },
         serialized.standardMs,
         serialized.candidateValues,
         serialized.initialComparisonValues,
         serialized.rngState
       );
-      estimator.config = { ...serialized.config };
+      estimator.config = normalizedConfig;
       if (serialized.logPosterior.length !== estimator.logPosterior.length) {
         throw new Error("Adaptive posterior grid size does not match its configuration.");
       }
