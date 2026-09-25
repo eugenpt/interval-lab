@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="A browser-based two-interval auditory duration-discrimination experiment with Getty replication and randomized model-fitting modes."
+      content="A browser-based auditory duration-discrimination experiment with Getty replication, randomized pairs, and Bayesian adaptive estimation."
     />
     <title>Interval Lab — Auditory duration discrimination</title>
     <link rel="stylesheet" href="./styles.css" />
@@ -60,6 +60,14 @@
               <span>
                 <strong>Randomized pairs</strong>
                 <small>Symmetric interval pairs designed for trial-level model fitting.</small>
+              </span>
+            </label>
+            <label class="mode-card">
+              <input type="radio" name="mode" value="adaptive" />
+              <span class="mode-number">03</span>
+              <span>
+                <strong>Adaptive estimate</strong>
+                <small>Estimate PSE and psychometric width using informative comparisons.</small>
               </span>
             </label>
           </div>
@@ -153,6 +161,136 @@
                 </div>
                 <p class="note">Base durations are sampled log-uniformly. Pair order, Start-to-first-tick delay, ISI, and after-answer pause are sampled independently inside their configured bounds. Equal bounds produce fixed timing. With no ISI, the intervals share one middle boundary click and playback uses three clicks. Start-to-first-tick includes the 500 ms audio pre-roll.</p>
               </div>
+
+              <div id="adaptiveConfig" class="config-section" hidden>
+                <div class="section-heading">
+                  <h3>Adaptive estimation</h3>
+                  <span class="chip" id="adaptiveTrialEstimate">70 trials</span>
+                </div>
+                <div class="form-grid">
+                  <label class="wide-field">
+                    <span>Candidate comparisons</span>
+                    <select id="adaptiveVariant">
+                      <option value="getty11">Getty's 11 values</option>
+                      <option value="continuous">Continuous comparison range</option>
+                    </select>
+                  </label>
+                  <label id="adaptiveGettyStandardField">
+                    <span>Getty standard (ms)</span>
+                    <select id="adaptiveGettyStandard">
+                      <option>50</option><option>100</option><option>200</option><option>400</option>
+                      <option>600</option><option selected>800</option><option>1000</option><option>1200</option>
+                      <option>1400</option><option>1600</option><option>1800</option><option>2000</option>
+                      <option>2400</option><option>2800</option><option>3200</option>
+                    </select>
+                  </label>
+                  <label id="adaptiveControlField" hidden>
+                    <span>Control interval (ms)</span>
+                    <input id="adaptiveControl" type="number" min="10" max="20000" step="1" value="800" />
+                  </label>
+                  <label class="adaptive-continuous-field" hidden>
+                    <span>Comparison minimum (ms)</span>
+                    <input id="adaptiveComparisonMin" type="number" min="1" max="20000" step="1" value="650" />
+                  </label>
+                  <label class="adaptive-continuous-field" hidden>
+                    <span>Comparison maximum (ms)</span>
+                    <input id="adaptiveComparisonMax" type="number" min="2" max="30000" step="1" value="950" />
+                  </label>
+                  <label class="wide-field">
+                    <span>Stopping rule</span>
+                    <select id="adaptiveStoppingMode">
+                      <option value="fixed">Fixed trial count</option>
+                      <option value="precision">Target posterior precision</option>
+                    </select>
+                  </label>
+                  <label id="adaptiveFixedTrialsField">
+                    <span>Total trials</span>
+                    <input id="adaptiveFixedTrials" type="number" min="11" max="1000" step="1" value="70" />
+                  </label>
+                  <label class="adaptive-precision-field" hidden>
+                    <span>Minimum trials</span>
+                    <input id="adaptiveMinTrials" type="number" min="11" max="1000" step="1" value="40" />
+                  </label>
+                  <label class="adaptive-precision-field" hidden>
+                    <span>Maximum trials</span>
+                    <input id="adaptiveMaxTrials" type="number" min="11" max="2000" step="1" value="120" />
+                  </label>
+                  <label class="adaptive-precision-field" hidden>
+                    <span>Target 95% CI width for PSE μ (ms)</span>
+                    <input id="adaptiveMuCiTarget" type="number" min="0.1" max="10000" step="0.1" value="20" />
+                  </label>
+                  <label class="adaptive-precision-field" hidden>
+                    <span>Target relative 95% CI width for σ (%)</span>
+                    <input id="adaptiveSigmaRelativeCiTarget" type="number" min="1" max="1000" step="1" value="50" />
+                  </label>
+                  <label class="check-field wide-field">
+                    <input id="adaptiveRequireTrialStart" type="checkbox" checked />
+                    <span>Require Start before every trial</span>
+                  </label>
+                  <label>
+                    <span>Start → first tick minimum (ms)</span>
+                    <input id="adaptiveStartDelayMin" type="number" min="500" max="60000" step="10" value="1000" />
+                  </label>
+                  <label>
+                    <span>Start → first tick maximum (ms)</span>
+                    <input id="adaptiveStartDelayMax" type="number" min="500" max="60000" step="10" value="1000" />
+                  </label>
+                  <label class="check-field wide-field">
+                    <input id="adaptiveSharedBoundary" type="checkbox" />
+                    <span>No ISI: use one shared middle click (3 clicks total)</span>
+                  </label>
+                  <label>
+                    <span>ISI minimum (ms)</span>
+                    <input id="adaptiveIsiMin" type="number" min="0" max="60000" step="10" value="2000" />
+                  </label>
+                  <label>
+                    <span>ISI maximum (ms)</span>
+                    <input id="adaptiveIsiMax" type="number" min="0" max="60000" step="10" value="2000" />
+                  </label>
+                  <label>
+                    <span>After-answer pause minimum (ms)</span>
+                    <input id="adaptivePostDelayMin" type="number" min="0" max="60000" step="10" value="3000" />
+                  </label>
+                  <label>
+                    <span>After-answer pause maximum (ms)</span>
+                    <input id="adaptivePostDelayMax" type="number" min="0" max="60000" step="10" value="3000" />
+                  </label>
+                  <label class="wide-field">
+                    <span>Random seed <small>(leave blank to generate)</small></span>
+                    <input id="adaptiveSeedInput" type="text" maxlength="80" placeholder="e.g. adaptive-pilot-01" />
+                  </label>
+                </div>
+                <details class="advanced-options">
+                  <summary>Advanced adaptive settings</summary>
+                  <div class="form-grid">
+                    <label>
+                      <span>μ grid points</span>
+                      <input id="adaptiveMuGridPoints" type="number" min="31" max="201" step="2" value="101" />
+                    </label>
+                    <label>
+                      <span>log(σ) grid points</span>
+                      <input id="adaptiveSigmaGridPoints" type="number" min="31" max="201" step="2" value="81" />
+                    </label>
+                    <label>
+                      <span>Maximum identical comparisons in sequence</span>
+                      <input id="adaptiveMaxSame" type="number" min="1" max="10" step="1" value="2" />
+                    </label>
+                    <label>
+                      <span>Near-tie randomization tolerance (%)</span>
+                      <input id="adaptiveNearTie" type="number" min="0" max="25" step="0.1" value="1" />
+                    </label>
+                    <label>
+                      <span>Early exploration through trial</span>
+                      <input id="adaptiveExplorationTrials" type="number" min="11" max="200" step="1" value="25" />
+                    </label>
+                    <label>
+                      <span>Early exploration probability (%)</span>
+                      <input id="adaptiveExplorationProbability" type="number" min="0" max="100" step="1" value="10" />
+                    </label>
+                  </div>
+                </details>
+                <p class="note">The first 11 trials provide shuffled full-range coverage. From trial 12 onward, the next comparison maximizes expected information about PSE μ and width σ jointly. The upcoming comparison is never shown in diagnostics.</p>
+              </div>
             </section>
 
             <aside class="panel audio-panel">
@@ -232,6 +370,23 @@
             </div>
           </section>
 
+          <details id="adaptiveDiagnostics" class="adaptive-diagnostics" hidden>
+            <summary>Adaptive diagnostics <span id="adaptivePrecisionBadge">Estimating…</span></summary>
+            <div class="diagnostic-content">
+              <div class="diagnostic-grid">
+                <div><span>Answered</span><strong id="diagnosticTrial">0</strong></div>
+                <div><span>Phase</span><strong id="diagnosticPhase">—</strong></div>
+                <div><span>PSE μ</span><strong id="diagnosticMu">—</strong><small id="diagnosticMuCi">—</small></div>
+                <div><span>Width σ</span><strong id="diagnosticSigma">—</strong><small id="diagnosticSigmaCi">—</small></div>
+                <div><span>Posterior entropy</span><strong id="diagnosticEntropy">—</strong></div>
+                <div><span>Last expected gain</span><strong id="diagnosticGain">—</strong></div>
+              </div>
+              <svg id="adaptiveCurve" class="adaptive-curve" viewBox="0 0 720 280" role="img" aria-label="Current psychometric curve and observed responses"></svg>
+              <p id="adaptivePrecisionText" class="note"></p>
+              <button class="button ghost" id="stopAdaptiveButton">Stop and save current estimate</button>
+            </div>
+          </details>
+
           <div class="run-footer">
             <span>No correctness feedback is shown.</span>
             <span id="storageUsage"></span>
@@ -272,6 +427,7 @@
       </form>
     </dialog>
 
-    <script src="./app.js?v=1.5.0" defer></script>
+    <script src="./adaptive.js?v=1.0.0" defer></script>
+    <script src="./app.js?v=1.6.0" defer></script>
   </body>
 </html>
