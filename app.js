@@ -4,8 +4,8 @@
   const LEGACY_STORAGE_KEY = "interval-lab-state-v1";
   const EXPERIMENT_KEY_PREFIX = "interval-lab-experiment-v1:";
   const CURRENT_EXPERIMENT_KEY = "interval-lab-current-experiment-v1";
-  const SCHEMA_VERSION = 3;
-  const APP_VERSION = "1.3.0";
+  const SCHEMA_VERSION = 4;
+  const APP_VERSION = "1.4.0";
   const DEFAULT_CLICK_DURATION_MS = 1.0;
   const PRE_ROLL_MS = 500;
   const POST_ROLL_MS = 500;
@@ -51,7 +51,7 @@
       "setupView", "runView", "summaryView", "saveIndicator", "resumeButton", "gettyConfig",
       "randomizedConfig", "randomTrialEstimate", "randomTrials", "equalPercent", "minDuration",
       "maxDuration", "minDifference", "maxDifference", "infiniteTrials", "requireTrialStart",
-      "startDelayMin", "startDelayMax", "isiMin", "isiMax", "seedInput", "sampleRateLabel", "volumeSlider",
+      "startDelayMin", "startDelayMax", "sharedBoundary", "isiMin", "isiMax", "seedInput", "sampleRateLabel", "volumeSlider",
       "volumeValue", "clickDuration", "testAudioButton", "participantId", "startButton", "setupError",
       "importJsonButton", "importJsonInput", "savedExperimentRow", "savedExperimentSelect", "removeExperimentButton",
       "runModeLabel", "sessionTitle", "sessionSubtitle", "pauseButton", "exportCsvHeaderButton", "exportHeaderButton", "progressFill",
@@ -149,6 +149,7 @@
     if (randomized) {
       config.infiniteTrials = false;
       config.requireTrialStart = false;
+      config.intervalBoundaryMode = "separated";
       config.startToFirstTickMinMs = startToFirstTickMs;
       config.startToFirstTickMaxMs = startToFirstTickMs;
       config.interstimulusMinMs = interstimulusMs;
@@ -172,12 +173,26 @@
     };
   }
 
+  function migrateV3(oldState) {
+    return {
+      ...oldState,
+      schemaVersion: SCHEMA_VERSION,
+      appVersion: APP_VERSION,
+      dataSchema: dataSchemaForMode(oldState.mode),
+      config: oldState.mode === "randomized"
+        ? { ...oldState.config, intervalBoundaryMode: "separated" }
+        : oldState.config,
+      _migrated: true
+    };
+  }
+
   function experimentStorageKey(experimentId) {
     return `${EXPERIMENT_KEY_PREFIX}${experimentId}`;
   }
 
   function normalizeState(parsed) {
     if (parsed?.schemaVersion === SCHEMA_VERSION) return parsed;
+    if (parsed?.schemaVersion === 3) return migrateV3(parsed);
     if (parsed?.schemaVersion === 2) return migrateV2(parsed);
     if (parsed?.schemaVersion === 1) return migrateV1(parsed);
     return null;
@@ -204,6 +219,9 @@
       if (typeof config.infiniteTrials !== "boolean" || typeof config.requireTrialStart !== "boolean") {
         throw new Error("The randomized trial-limit or Start configuration is invalid.");
       }
+      if (!["separated", "shared"].includes(config.intervalBoundaryMode)) {
+        throw new Error("The randomized interval-boundary mode is invalid.");
+      }
       if (!config.infiniteTrials && (!Number.isInteger(config.trialCount) || config.trialCount < 1)) {
         throw new Error("The randomized trial count is invalid.");
       }
@@ -216,6 +234,10 @@
           || config.startToFirstTickMaxMs < config.startToFirstTickMinMs
           || config.interstimulusMaxMs < config.interstimulusMinMs) {
         throw new Error("The randomized timing bounds are invalid.");
+      }
+      if (config.intervalBoundaryMode === "shared"
+          && (config.interstimulusMinMs !== 0 || config.interstimulusMaxMs !== 0)) {
+        throw new Error("Shared-boundary trials must have zero ISI bounds.");
       }
     }
     if (!Array.isArray(experiment.sessions) || !experiment.sessions.length) throw new Error("The experiment has no sessions.");
@@ -414,6 +436,12 @@
     el.randomTrialEstimate.textContent = unlimited ? "Unlimited trials" : `${count.toLocaleString()} trials`;
   }
 
+  function updateBoundaryControls() {
+    const shared = el.sharedBoundary.checked;
+    el.isiMin.disabled = shared;
+    el.isiMax.disabled = shared;
+  }
+
   function readAudioSettings() {
     const level = Number(el.volumeSlider.value) / 100;
     const clickDurationMs = Number(el.clickDuration.value);
@@ -435,8 +463,9 @@
       requireTrialStart: el.requireTrialStart.checked,
       startToFirstTickMinMs: Number(el.startDelayMin.value),
       startToFirstTickMaxMs: Number(el.startDelayMax.value),
-      interstimulusMinMs: Number(el.isiMin.value),
-      interstimulusMaxMs: Number(el.isiMax.value)
+      intervalBoundaryMode: el.sharedBoundary.checked ? "shared" : "separated",
+      interstimulusMinMs: el.sharedBoundary.checked ? 0 : Number(el.isiMin.value),
+      interstimulusMaxMs: el.sharedBoundary.checked ? 0 : Number(el.isiMax.value)
     };
     if (!config.infiniteTrials
         && (!Number.isInteger(config.trialCount) || config.trialCount < 20 || config.trialCount > 5000)) {
@@ -642,12 +671,14 @@
     if (state.mode === "randomized") {
       return {
         interstimulusMs: trial[2],
-        startToFirstTickMs: trial[3]
+        startToFirstTickMs: trial[3],
+        intervalBoundaryMode: state.config.intervalBoundaryMode
       };
     }
     return {
       interstimulusMs: state.config.interstimulusMs,
-      startToFirstTickMs: state.config.foreperiodMs + (state.config.preRollMs ?? 0)
+      startToFirstTickMs: state.config.foreperiodMs + (state.config.preRollMs ?? 0),
+      intervalBoundaryMode: "separated"
     };
   }
 
@@ -673,13 +704,21 @@
     const interstimulusMs = Number.isFinite(timing?.interstimulusMs) ? timing.interstimulusMs : INTERVAL_GAP_MS;
     const isiSamples = Math.round(interstimulusMs / 1000 * sampleRate);
     const clickSamples = Math.max(1, Math.round(audio.clickDurationMs / 1000 * sampleRate));
-    const clickPositions = [
-      preRollSamples,
-      preRollSamples + t1Samples,
-      preRollSamples + t1Samples + isiSamples,
-      preRollSamples + t1Samples + isiSamples + t2Samples
-    ];
-    const buffer = audioContext.createBuffer(1, clickPositions[3] + clickSamples + postRollSamples, sampleRate);
+    const sharedBoundary = timing?.intervalBoundaryMode === "shared";
+    const clickPositions = sharedBoundary
+      ? [
+          preRollSamples,
+          preRollSamples + t1Samples,
+          preRollSamples + t1Samples + t2Samples
+        ]
+      : [
+          preRollSamples,
+          preRollSamples + t1Samples,
+          preRollSamples + t1Samples + isiSamples,
+          preRollSamples + t1Samples + isiSamples + t2Samples
+        ];
+    const lastClickPosition = clickPositions[clickPositions.length - 1];
+    const buffer = audioContext.createBuffer(1, lastClickPosition + clickSamples + postRollSamples, sampleRate);
     const channel = buffer.getChannelData(0);
     const amplitude = Math.max(0.02, Math.min(0.95, audio.level));
     for (const position of clickPositions) {
@@ -732,11 +771,14 @@
     el.sessionTitle.textContent = state.mode === "getty"
       ? `Session ${state.currentSessionIndex + 1}: ${session.standardMs} ms standard`
       : "Randomized duration session";
+    const clickStructure = state.mode === "randomized" && state.config.intervalBoundaryMode === "shared"
+      ? "3-click shared boundary"
+      : "4-click separated intervals";
     el.sessionSubtitle.textContent = state.mode === "getty"
       ? "330 judgments · standard first · 30 balanced blocks"
       : unlimited
-        ? "Unlimited judgments · interval order and timing randomized"
-        : `${total.toLocaleString()} judgments · interval order and timing randomized`;
+        ? `Unlimited judgments · ${clickStructure}`
+        : `${total.toLocaleString()} judgments · ${clickStructure}`;
     el.progressFill.style.width = unlimited ? "0%" : `${total ? answered / total * 100 : 0}%`;
     el.trialProgress.textContent = unlimited
       ? `Trial ${(answered + 1).toLocaleString()} · unlimited`
@@ -790,7 +832,8 @@
       await ensureAudio();
       const rendered = renderTrialBuffer(t1Ms, t2Ms, state.audio, {
         ...state.config,
-        interstimulusMs: timing.interstimulusMs
+        interstimulusMs: timing.interstimulusMs,
+        intervalBoundaryMode: timing.intervalBoundaryMode
       });
       currentSampleRate = rendered.sampleRate;
       setTrialPhase("Prepare", "Listen to both intervals.");
@@ -935,7 +978,7 @@
   function csvRows() {
     const columns = [
       "experiment_id", "participant_id", "mode", "session_index", "trial_index",
-      "interval_1_ms", "interval_2_ms", "interstimulus_ms", "start_to_first_tick_ms",
+      "interval_1_ms", "interval_2_ms", "boundary_mode", "interstimulus_ms", "start_to_first_tick_ms",
       "response", "answered_at_unix_ms",
       "response_time_ms", "sample_rate_hz"
     ];
@@ -947,6 +990,7 @@
       trial_index: trialIndex + 1,
       interval_1_ms: trial[0],
       interval_2_ms: trial[1],
+      boundary_mode: state.mode === "randomized" ? state.config.intervalBoundaryMode : "separated",
       interstimulus_ms: state.mode === "randomized" ? trial[2] : null,
       start_to_first_tick_ms: state.mode === "randomized" ? trial[3] : null,
       response: answer[0],
@@ -1113,7 +1157,9 @@
       el.warningLight.classList.add("playing");
       const rendered = renderTrialBuffer(300, 360, audio, {
         preRollMs: PRE_ROLL_MS,
-        postRollMs: POST_ROLL_MS
+        postRollMs: POST_ROLL_MS,
+        interstimulusMs: el.sharedBoundary.checked ? 0 : Number(el.isiMin.value),
+        intervalBoundaryMode: el.sharedBoundary.checked ? "shared" : "separated"
       });
       await playBuffer(rendered.buffer);
     } catch (error) {
@@ -1200,6 +1246,7 @@
       updateRandomTrialControls();
     });
     el.infiniteTrials.addEventListener("change", updateRandomTrialControls);
+    el.sharedBoundary.addEventListener("change", updateBoundaryControls);
     el.volumeSlider.addEventListener("input", () => {
       el.volumeValue.textContent = `${el.volumeSlider.value}%`;
     });
@@ -1260,6 +1307,7 @@
     bindEvents();
     setMode("getty");
     updateRandomTrialControls();
+    updateBoundaryControls();
     if (state?._migrated) {
       delete state._migrated;
       saveState();

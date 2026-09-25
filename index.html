@@ -126,6 +126,10 @@
                     <span>Start → first tick maximum (ms)</span>
                     <input id="startDelayMax" type="number" min="500" max="60000" step="10" value="1000" />
                   </label>
+                  <label class="check-field wide-field">
+                    <input id="sharedBoundary" type="checkbox" />
+                    <span>No ISI: use one shared middle click (3 clicks total)</span>
+                  </label>
                   <label>
                     <span>ISI minimum (ms)</span>
                     <input id="isiMin" type="number" min="0" max="60000" step="10" value="2000" />
@@ -139,7 +143,7 @@
                     <input id="seedInput" type="text" maxlength="80" placeholder="e.g. pilot-01" />
                   </label>
                 </div>
-                <p class="note">Base durations are sampled log-uniformly. Pair order, Start-to-first-tick delay, and ISI are randomized independently inside their configured bounds. Equal bounds produce fixed timing. Start-to-first-tick includes the 500 ms audio pre-roll.</p>
+                <p class="note">Base durations are sampled log-uniformly. Pair order and Start-to-first-tick delay are randomized independently. With a separate ISI, its duration is sampled inside the configured bounds and playback uses four clicks. With no ISI, the intervals share one middle boundary click and playback uses three clicks. Start-to-first-tick includes the 500 ms audio pre-roll.</p>
               </div>
             </section>
 
