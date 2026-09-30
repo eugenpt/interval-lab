@@ -137,7 +137,15 @@
                   </label>
                   <label class="check-field wide-field">
                     <input id="sharedBoundary" type="checkbox" />
-                    <span>No ISI: use one shared middle click (3 clicks total)</span>
+                    <span>No ISI: use shared boundary clicks</span>
+                  </label>
+                  <label class="random-shared-boundary-only" hidden>
+                    <span>First-interval repeats minimum</span>
+                    <input id="firstIntervalRepeatsMin" type="number" min="1" max="100" step="1" value="1" />
+                  </label>
+                  <label class="random-shared-boundary-only" hidden>
+                    <span>First-interval repeats maximum</span>
+                    <input id="firstIntervalRepeatsMax" type="number" min="1" max="100" step="1" value="1" />
                   </label>
                   <label>
                     <span>ISI minimum (ms)</span>
@@ -160,7 +168,7 @@
                     <input id="seedInput" type="text" maxlength="80" placeholder="e.g. pilot-01" />
                   </label>
                 </div>
-                <p class="note">Base durations are sampled log-uniformly. Pair order, Start-to-first-tick delay, ISI, and after-answer pause are sampled independently inside their configured bounds. Equal bounds produce fixed timing. With no ISI, the intervals share one middle boundary click and playback uses three clicks. Start-to-first-tick includes the 500 ms audio pre-roll.</p>
+                <p class="note">Base durations are sampled log-uniformly. Pair order, Start-to-first-tick delay, ISI, and after-answer pause are sampled independently inside their configured bounds. Equal bounds produce fixed timing. With no ISI, the first presented interval repeats the sampled number of times using shared boundary clicks, followed by the second interval once. One repeat gives the original three-click stimulus. Start-to-first-tick includes the 500 ms audio pre-roll.</p>
               </div>
 
               <div id="adaptiveConfig" class="config-section" hidden>
@@ -238,7 +246,15 @@
                   </label>
                   <label class="check-field wide-field">
                     <input id="adaptiveSharedBoundary" type="checkbox" />
-                    <span>No ISI: use one shared middle click (3 clicks total)</span>
+                    <span>No ISI: use shared boundary clicks</span>
+                  </label>
+                  <label class="adaptive-shared-boundary-only" hidden>
+                    <span>Control-interval repeats minimum</span>
+                    <input id="adaptiveControlRepeatsMin" type="number" min="1" max="100" step="1" value="1" />
+                  </label>
+                  <label class="adaptive-shared-boundary-only" hidden>
+                    <span>Control-interval repeats maximum</span>
+                    <input id="adaptiveControlRepeatsMax" type="number" min="1" max="100" step="1" value="1" />
                   </label>
                   <label>
                     <span>ISI minimum (ms)</span>
@@ -364,11 +380,11 @@
 
               <div class="response-buttons" id="responseButtons" hidden>
                 <button class="response-button" data-response="1">
-                  <span class="keycap">1</span>
+                  <span class="keycap">← / 1</span>
                   <span>First interval</span>
                 </button>
                 <button class="response-button" data-response="2">
-                  <span class="keycap">2</span>
+                  <span class="keycap">→ / 2</span>
                   <span>Second interval</span>
                 </button>
               </div>
@@ -432,7 +448,8 @@
       </form>
     </dialog>
 
+    <script src="./stimulus.js?v=1.0.0" defer></script>
     <script src="./adaptive.js?v=2.0.0" defer></script>
-    <script src="./app.js?v=1.7.0" defer></script>
+    <script src="./app.js?v=1.8.0" defer></script>
   </body>
 </html>

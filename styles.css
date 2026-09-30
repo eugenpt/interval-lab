@@ -240,7 +240,7 @@ input:disabled { cursor: not-allowed; opacity: .48; }
 .response-buttons { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px; }
 .response-button { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 86px; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--surface-2); cursor: pointer; font-weight: 720; }
 .response-button:hover, .response-button:focus-visible { border-color: var(--accent); outline: none; background: rgba(93,242,181,.09); }
-.keycap { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--line-strong); border-radius: 7px; background: #07110f; color: var(--accent); font: 700 .86rem ui-monospace, monospace; }
+.keycap { display: grid; place-items: center; min-width: 48px; height: 32px; padding: 0 6px; border: 1px solid var(--line-strong); border-radius: 7px; background: #07110f; color: var(--accent); font: 700 .86rem ui-monospace, monospace; }
 .run-footer { margin-top: 12px; color: var(--muted); font-size: .8rem; }
 
 .adaptive-diagnostics { margin-top: 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }

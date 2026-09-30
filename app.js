@@ -5,8 +5,8 @@
   const EXPERIMENT_KEY_PREFIX = "interval-lab-experiment-v1:";
   const CURRENT_EXPERIMENT_KEY = "interval-lab-current-experiment-v1";
   const SETUP_PREFERENCES_KEY = "interval-lab-last-setup-v1";
-  const SCHEMA_VERSION = 7;
-  const APP_VERSION = "1.7.0";
+  const SCHEMA_VERSION = 8;
+  const APP_VERSION = "1.8.0";
   const DEFAULT_CLICK_DURATION_MS = 1.0;
   const PRE_ROLL_MS = 500;
   const POST_ROLL_MS = 500;
@@ -35,11 +35,12 @@
   const GETTY_TRIAL_SCHEMA = Object.freeze(["interval_1_ms", "interval_2_ms"]);
   const RANDOMIZED_TRIAL_SCHEMA = Object.freeze([
     "interval_1_ms", "interval_2_ms", "interstimulus_ms", "start_to_first_tick_ms",
-    "post_response_delay_ms"
+    "post_response_delay_ms", "first_interval_repeats"
   ]);
   const ADAPTIVE_TRIAL_SCHEMA = Object.freeze([
     "interval_1_ms", "interval_2_ms", "interstimulus_ms", "start_to_first_tick_ms",
-    "post_response_delay_ms", "adaptive_phase", "selected_expected_information_gain"
+    "post_response_delay_ms", "adaptive_phase", "selected_expected_information_gain",
+    "first_interval_repeats"
   ]);
   const ADAPTIVE_RESULT_SCHEMA = Object.freeze([
     "mu_mean_ms", "mu_map_ms", "mu_ci_low_ms", "mu_ci_high_ms",
@@ -66,13 +67,14 @@
       "setupView", "runView", "summaryView", "saveIndicator", "resumeButton", "gettyConfig",
       "randomizedConfig", "adaptiveConfig", "randomTrialEstimate", "randomTrials", "equalPercent", "minDuration",
       "maxDuration", "minDifference", "maxDifference", "infiniteTrials", "requireTrialStart",
-      "startDelayMin", "startDelayMax", "sharedBoundary", "isiMin", "isiMax",
+      "startDelayMin", "startDelayMax", "sharedBoundary", "firstIntervalRepeatsMin", "firstIntervalRepeatsMax", "isiMin", "isiMax",
       "postResponseDelayMin", "postResponseDelayMax", "seedInput", "sampleRateLabel", "volumeSlider",
       "adaptiveTrialEstimate", "adaptiveVariant", "adaptiveGettyStandardField", "adaptiveGettyStandard",
       "adaptiveControlField", "adaptiveControl", "adaptiveComparisonMin", "adaptiveComparisonMax",
       "adaptiveStoppingMode", "adaptiveFixedTrialsField", "adaptiveFixedTrials", "adaptiveMinTrials",
       "adaptiveMaxTrials", "adaptiveMuCiTarget", "adaptiveSigmaRelativeCiTarget",
       "adaptiveRequireTrialStart", "adaptiveStartDelayMin", "adaptiveStartDelayMax", "adaptiveSharedBoundary",
+      "adaptiveControlRepeatsMin", "adaptiveControlRepeatsMax",
       "adaptiveIsiMin", "adaptiveIsiMax", "adaptivePostDelayMin", "adaptivePostDelayMax", "adaptiveSeedInput",
       "adaptiveMuGridPoints", "adaptiveSigmaGridPoints", "adaptiveMaxSame", "adaptiveNearTie",
       "adaptiveExplorationTrials", "adaptiveExplorationProbability", "adaptivePersistentExplorationProbability",
@@ -93,12 +95,14 @@
   const SETUP_PREFERENCE_FIELDS = Object.freeze([
     "randomTrials", "infiniteTrials", "equalPercent", "minDuration", "maxDuration",
     "minDifference", "maxDifference", "requireTrialStart", "startDelayMin", "startDelayMax",
-    "sharedBoundary", "isiMin", "isiMax", "postResponseDelayMin", "postResponseDelayMax",
+    "sharedBoundary", "firstIntervalRepeatsMin", "firstIntervalRepeatsMax",
+    "isiMin", "isiMax", "postResponseDelayMin", "postResponseDelayMax",
     "adaptiveVariant", "adaptiveGettyStandard", "adaptiveControl", "adaptiveComparisonMin",
     "adaptiveComparisonMax", "adaptiveStoppingMode", "adaptiveFixedTrials", "adaptiveMinTrials",
     "adaptiveMaxTrials", "adaptiveMuCiTarget", "adaptiveSigmaRelativeCiTarget",
     "adaptiveRequireTrialStart", "adaptiveStartDelayMin", "adaptiveStartDelayMax",
-    "adaptiveSharedBoundary", "adaptiveIsiMin", "adaptiveIsiMax", "adaptivePostDelayMin",
+    "adaptiveSharedBoundary", "adaptiveControlRepeatsMin", "adaptiveControlRepeatsMax",
+    "adaptiveIsiMin", "adaptiveIsiMax", "adaptivePostDelayMin",
     "adaptivePostDelayMax", "adaptiveMuGridPoints", "adaptiveSigmaGridPoints", "adaptiveMaxSame",
     "adaptiveNearTie", "adaptiveExplorationTrials", "adaptiveExplorationProbability",
     "adaptivePersistentExplorationProbability", "volumeSlider", "clickDuration"
@@ -239,13 +243,12 @@
 
   function migrateV4(oldState) {
     if (oldState.mode !== "randomized") {
-      return {
+      return migrateV7({
         ...oldState,
-        schemaVersion: SCHEMA_VERSION,
-        appVersion: APP_VERSION,
-        dataSchema: dataSchemaForMode(oldState.mode),
+        schemaVersion: 7,
+        appVersion: "1.7.0",
         _migrated: true
-      };
+      });
     }
     const postResponseDelayMs = Number.isFinite(oldState.config?.intertrialMs)
       ? oldState.config.intertrialMs
@@ -256,11 +259,10 @@
       postResponseDelayMaxMs: postResponseDelayMs
     };
     delete config.intertrialMs;
-    return {
+    return migrateV7({
       ...oldState,
-      schemaVersion: SCHEMA_VERSION,
-      appVersion: APP_VERSION,
-      dataSchema: dataSchemaForMode(oldState.mode),
+      schemaVersion: 7,
+      appVersion: "1.7.0",
       config,
       sessions: oldState.sessions.map((session) => ({
         ...session,
@@ -269,38 +271,35 @@
           : session.trials
       })),
       _migrated: true
-    };
+    });
   }
 
   function migrateV5(oldState) {
-    return {
+    return migrateV7({
       ...oldState,
-      schemaVersion: SCHEMA_VERSION,
-      appVersion: APP_VERSION,
-      dataSchema: dataSchemaForMode(oldState.mode),
+      schemaVersion: 7,
+      appVersion: "1.7.0",
       _migrated: true
-    };
+    });
   }
 
   function migrateV6(oldState) {
     if (oldState.mode !== "adaptive") {
-      return {
+      return migrateV7({
         ...oldState,
-        schemaVersion: SCHEMA_VERSION,
-        appVersion: APP_VERSION,
-        dataSchema: dataSchemaForMode(oldState.mode),
+        schemaVersion: 7,
+        appVersion: "1.7.0",
         _migrated: true
-      };
+      });
     }
     const algorithmVersion = window.IntervalLabAdaptive.ALGORITHM_VERSION;
     const explorationProbability = Number.isFinite(oldState.config?.estimator?.explorationProbability)
       ? oldState.config.estimator.explorationProbability
       : 0;
-    return {
+    return migrateV7({
       ...oldState,
-      schemaVersion: SCHEMA_VERSION,
-      appVersion: APP_VERSION,
-      dataSchema: dataSchemaForMode(oldState.mode),
+      schemaVersion: 7,
+      appVersion: "1.7.0",
       config: {
         ...oldState.config,
         estimator: {
@@ -322,6 +321,33 @@
         }
       })),
       _migrated: true
+    });
+  }
+
+  function migrateV7(oldState) {
+    const variableTiming = ["randomized", "adaptive"].includes(oldState.mode);
+    const repeatIndex = oldState.mode === "adaptive" ? 7 : 5;
+    return {
+      ...oldState,
+      schemaVersion: SCHEMA_VERSION,
+      appVersion: APP_VERSION,
+      dataSchema: dataSchemaForMode(oldState.mode),
+      config: variableTiming
+        ? {
+            ...oldState.config,
+            firstIntervalRepeatsMin: Number.isInteger(oldState.config?.firstIntervalRepeatsMin)
+              ? oldState.config.firstIntervalRepeatsMin : 1,
+            firstIntervalRepeatsMax: Number.isInteger(oldState.config?.firstIntervalRepeatsMax)
+              ? oldState.config.firstIntervalRepeatsMax : 1
+          }
+        : oldState.config,
+      sessions: oldState.sessions.map((session) => ({
+        ...session,
+        trials: variableTiming && Array.isArray(session.trials)
+          ? session.trials.map((trial) => trial.length > repeatIndex ? trial : [...trial, 1])
+          : session.trials
+      })),
+      _migrated: true
     };
   }
 
@@ -331,6 +357,7 @@
 
   function normalizeState(parsed) {
     if (parsed?.schemaVersion === SCHEMA_VERSION) return parsed;
+    if (parsed?.schemaVersion === 7) return migrateV7(parsed);
     if (parsed?.schemaVersion === 6) return migrateV6(parsed);
     if (parsed?.schemaVersion === 5) return migrateV5(parsed);
     if (parsed?.schemaVersion === 4) return migrateV4(parsed);
@@ -388,6 +415,13 @@
           && (config.interstimulusMinMs !== 0 || config.interstimulusMaxMs !== 0)) {
         throw new Error("Shared-boundary trials must have zero ISI bounds.");
       }
+      if (!Number.isInteger(config.firstIntervalRepeatsMin)
+          || !Number.isInteger(config.firstIntervalRepeatsMax)
+          || config.firstIntervalRepeatsMin < 1
+          || config.firstIntervalRepeatsMax < config.firstIntervalRepeatsMin
+          || config.firstIntervalRepeatsMax > 100) {
+        throw new Error("First-interval repeat bounds must be whole numbers from 1 to 100.");
+      }
     } else if (experiment.mode === "adaptive") {
       const config = experiment.config;
       if (!["getty11", "continuous"].includes(config.adaptiveVariant)
@@ -433,6 +467,13 @@
       if (config.intervalBoundaryMode === "shared"
           && (config.interstimulusMinMs !== 0 || config.interstimulusMaxMs !== 0)) {
         throw new Error("Shared-boundary adaptive trials must have zero ISI bounds.");
+      }
+      if (!Number.isInteger(config.firstIntervalRepeatsMin)
+          || !Number.isInteger(config.firstIntervalRepeatsMax)
+          || config.firstIntervalRepeatsMin < 1
+          || config.firstIntervalRepeatsMax < config.firstIntervalRepeatsMin
+          || config.firstIntervalRepeatsMax > 100) {
+        throw new Error("Control-interval repeat bounds must be whole numbers from 1 to 100.");
       }
       if (config.stoppingMode === "fixed"
           && (!Number.isInteger(config.fixedTrials) || config.fixedTrials < config.initialComparisonValues.length)) {
@@ -483,6 +524,11 @@
           && trial[4] >= experiment.config.postResponseDelayMinMs
           && trial[4] <= experiment.config.postResponseDelayMaxMs;
         if (!timingIsValid) return false;
+        const repeatIndex = experiment.mode === "adaptive" ? 7 : 5;
+        const repeatsAreValid = Number.isInteger(trial[repeatIndex])
+          && trial[repeatIndex] >= experiment.config.firstIntervalRepeatsMin
+          && trial[repeatIndex] <= experiment.config.firstIntervalRepeatsMax;
+        if (!repeatsAreValid) return false;
         return experiment.mode !== "adaptive"
           || (["initial_block", "adaptive"].includes(trial[5]) && Number.isFinite(trial[6]));
       };
@@ -669,6 +715,9 @@
     const shared = el.sharedBoundary.checked;
     el.isiMin.disabled = shared;
     el.isiMax.disabled = shared;
+    document.querySelectorAll(".random-shared-boundary-only").forEach((field) => {
+      field.hidden = !shared;
+    });
   }
 
   function updateAdaptiveControls() {
@@ -686,6 +735,9 @@
     const shared = el.adaptiveSharedBoundary.checked;
     el.adaptiveIsiMin.disabled = shared;
     el.adaptiveIsiMax.disabled = shared;
+    document.querySelectorAll(".adaptive-shared-boundary-only").forEach((field) => {
+      field.hidden = !shared;
+    });
     const count = precision ? Number(el.adaptiveMaxTrials.value) : Number(el.adaptiveFixedTrials.value);
     el.adaptiveTrialEstimate.textContent = precision
       ? `Up to ${Number.isFinite(count) ? count.toLocaleString() : "—"} trials`
@@ -759,6 +811,8 @@
       setSetupControl("startDelayMin", config.startToFirstTickMinMs);
       setSetupControl("startDelayMax", config.startToFirstTickMaxMs);
       setSetupControl("sharedBoundary", config.intervalBoundaryMode === "shared");
+      setSetupControl("firstIntervalRepeatsMin", config.firstIntervalRepeatsMin ?? 1);
+      setSetupControl("firstIntervalRepeatsMax", config.firstIntervalRepeatsMax ?? 1);
       setSetupControl("isiMin", config.interstimulusMinMs);
       setSetupControl("isiMax", config.interstimulusMaxMs);
       setSetupControl("postResponseDelayMin", config.postResponseDelayMinMs);
@@ -780,6 +834,8 @@
       setSetupControl("adaptiveStartDelayMin", config.startToFirstTickMinMs);
       setSetupControl("adaptiveStartDelayMax", config.startToFirstTickMaxMs);
       setSetupControl("adaptiveSharedBoundary", config.intervalBoundaryMode === "shared");
+      setSetupControl("adaptiveControlRepeatsMin", config.firstIntervalRepeatsMin ?? 1);
+      setSetupControl("adaptiveControlRepeatsMax", config.firstIntervalRepeatsMax ?? 1);
       setSetupControl("adaptiveIsiMin", config.interstimulusMinMs);
       setSetupControl("adaptiveIsiMax", config.interstimulusMaxMs);
       setSetupControl("adaptivePostDelayMin", config.postResponseDelayMinMs);
@@ -825,6 +881,8 @@
       intervalBoundaryMode: el.sharedBoundary.checked ? "shared" : "separated",
       interstimulusMinMs: el.sharedBoundary.checked ? 0 : Number(el.isiMin.value),
       interstimulusMaxMs: el.sharedBoundary.checked ? 0 : Number(el.isiMax.value),
+      firstIntervalRepeatsMin: el.sharedBoundary.checked ? Number(el.firstIntervalRepeatsMin.value) : 1,
+      firstIntervalRepeatsMax: el.sharedBoundary.checked ? Number(el.firstIntervalRepeatsMax.value) : 1,
       postResponseDelayMinMs: Number(el.postResponseDelayMin.value),
       postResponseDelayMaxMs: Number(el.postResponseDelayMax.value)
     };
@@ -857,6 +915,13 @@
     }
     if (config.startToFirstTickMinMs < PRE_ROLL_MS) {
       throw new Error(`Start-to-first-tick delay cannot be shorter than the ${PRE_ROLL_MS} ms audio pre-roll.`);
+    }
+    if (!Number.isInteger(config.firstIntervalRepeatsMin)
+        || !Number.isInteger(config.firstIntervalRepeatsMax)
+        || config.firstIntervalRepeatsMin < 1
+        || config.firstIntervalRepeatsMax < config.firstIntervalRepeatsMin
+        || config.firstIntervalRepeatsMax > 100) {
+      throw new Error("First-interval repeat bounds must be whole numbers from 1 to 100, with maximum at least minimum.");
     }
     if (config.infiniteTrials) delete config.trialCount;
     return config;
@@ -906,6 +971,8 @@
       intervalBoundaryMode: el.adaptiveSharedBoundary.checked ? "shared" : "separated",
       interstimulusMinMs: el.adaptiveSharedBoundary.checked ? 0 : Number(el.adaptiveIsiMin.value),
       interstimulusMaxMs: el.adaptiveSharedBoundary.checked ? 0 : Number(el.adaptiveIsiMax.value),
+      firstIntervalRepeatsMin: el.adaptiveSharedBoundary.checked ? Number(el.adaptiveControlRepeatsMin.value) : 1,
+      firstIntervalRepeatsMax: el.adaptiveSharedBoundary.checked ? Number(el.adaptiveControlRepeatsMax.value) : 1,
       postResponseDelayMinMs: Number(el.adaptivePostDelayMin.value),
       postResponseDelayMaxMs: Number(el.adaptivePostDelayMax.value),
       estimator: {
@@ -947,6 +1014,13 @@
     }
     if (config.startToFirstTickMinMs < PRE_ROLL_MS) {
       throw new Error(`Start-to-first-tick delay cannot be shorter than the ${PRE_ROLL_MS} ms audio pre-roll.`);
+    }
+    if (!Number.isInteger(config.firstIntervalRepeatsMin)
+        || !Number.isInteger(config.firstIntervalRepeatsMax)
+        || config.firstIntervalRepeatsMin < 1
+        || config.firstIntervalRepeatsMax < config.firstIntervalRepeatsMin
+        || config.firstIntervalRepeatsMax > 100) {
+      throw new Error("Control-interval repeat bounds must be whole numbers from 1 to 100, with maximum at least minimum.");
     }
     for (const [value, minimum, maximum, label] of [
       [config.estimator.muGridPoints, 31, 201, "μ grid points"],
@@ -1005,7 +1079,8 @@
       pair[1],
       randomInteger(config.interstimulusMinMs, config.interstimulusMaxMs, rng),
       randomInteger(config.startToFirstTickMinMs, config.startToFirstTickMaxMs, rng),
-      randomInteger(config.postResponseDelayMinMs, config.postResponseDelayMaxMs, rng)
+      randomInteger(config.postResponseDelayMinMs, config.postResponseDelayMaxMs, rng),
+      randomInteger(config.firstIntervalRepeatsMin, config.firstIntervalRepeatsMax, rng)
     ];
   }
 
@@ -1083,8 +1158,8 @@
       ...sharedTiming,
       ...randomConfig,
       sampling: randomConfig.infiniteTrials
-        ? "log-uniform base duration; pair symmetric around arithmetic mean; randomized order; equal pairs sampled independently; uniform integer timing within configured bounds"
-        : "log-uniform base duration; pair symmetric around arithmetic mean; randomized order; exact rounded equal-pair count; uniform integer timing within configured bounds"
+        ? "log-uniform base duration; pair symmetric around arithmetic mean; randomized order; equal pairs sampled independently; uniform integer timing and first-interval repeat count within configured bounds"
+        : "log-uniform base duration; pair symmetric around arithmetic mean; randomized order; exact rounded equal-pair count; uniform integer timing and first-interval repeat count within configured bounds"
     };
     return {
       schemaVersion: SCHEMA_VERSION,
@@ -1133,7 +1208,7 @@
       ...adaptiveConfig,
       standardAlwaysFirst: true,
       responseModel: "P(comparison judged longer) = Phi((comparison - mu) / sigma)",
-      sampling: "first 11 shuffled full-range coverage comparisons; then expected joint posterior information gain over mu and log(sigma)"
+      sampling: "first 11 shuffled full-range coverage comparisons; then expected joint posterior information gain over mu and log(sigma); uniform integer timing and control-repeat count within configured bounds"
     };
     const estimator = createAdaptiveEstimator(config, seed);
     return {
@@ -1200,7 +1275,8 @@
       randomInteger(state.config.startToFirstTickMinMs, state.config.startToFirstTickMaxMs, timingRng),
       randomInteger(state.config.postResponseDelayMinMs, state.config.postResponseDelayMaxMs, timingRng),
       selection.phase,
-      selection.expectedInformationGain
+      selection.expectedInformationGain,
+      randomInteger(state.config.firstIntervalRepeatsMin, state.config.firstIntervalRepeatsMax, timingRng)
     ];
   }
 
@@ -1227,14 +1303,16 @@
         interstimulusMs: trial[2],
         startToFirstTickMs: trial[3],
         postResponseDelayMs: trial[4],
-        intervalBoundaryMode: state.config.intervalBoundaryMode
+        intervalBoundaryMode: state.config.intervalBoundaryMode,
+        firstIntervalRepeats: state.mode === "adaptive" ? trial[7] : trial[5]
       };
     }
     return {
       interstimulusMs: state.config.interstimulusMs,
       startToFirstTickMs: state.config.foreperiodMs + (state.config.preRollMs ?? 0),
       postResponseDelayMs: state.config.intertrialMs,
-      intervalBoundaryMode: "separated"
+      intervalBoundaryMode: "separated",
+      firstIntervalRepeats: 1
     };
   }
 
@@ -1260,19 +1338,15 @@
     const interstimulusMs = Number.isFinite(timing?.interstimulusMs) ? timing.interstimulusMs : INTERVAL_GAP_MS;
     const isiSamples = Math.round(interstimulusMs / 1000 * sampleRate);
     const clickSamples = Math.max(1, Math.round(audio.clickDurationMs / 1000 * sampleRate));
-    const sharedBoundary = timing?.intervalBoundaryMode === "shared";
-    const clickPositions = sharedBoundary
-      ? [
-          preRollSamples,
-          preRollSamples + t1Samples,
-          preRollSamples + t1Samples + t2Samples
-        ]
-      : [
-          preRollSamples,
-          preRollSamples + t1Samples,
-          preRollSamples + t1Samples + isiSamples,
-          preRollSamples + t1Samples + isiSamples + t2Samples
-        ];
+    if (!window.IntervalLabStimulus) throw new Error("The stimulus timing module did not load.");
+    const clickPositions = window.IntervalLabStimulus.buildClickPositionsSamples({
+      preRollSamples,
+      firstIntervalSamples: t1Samples,
+      secondIntervalSamples: t2Samples,
+      interstimulusSamples: isiSamples,
+      boundaryMode: timing?.intervalBoundaryMode,
+      firstIntervalRepeats: timing?.firstIntervalRepeats ?? 1
+    });
     const lastClickPosition = clickPositions[clickPositions.length - 1];
     const buffer = audioContext.createBuffer(1, lastClickPosition + clickSamples + postRollSamples, sampleRate);
     const channel = buffer.getChannelData(0);
@@ -1469,9 +1543,19 @@
       : state.mode === "adaptive"
         ? `${session.standardMs} ms control interval`
         : "Randomized duration session";
-    const clickStructure = ["randomized", "adaptive"].includes(state.mode) && state.config.intervalBoundaryMode === "shared"
-      ? "3-click shared boundary"
-      : "4-click separated intervals";
+    let clickStructure = "4-click separated intervals";
+    if (["randomized", "adaptive"].includes(state.mode) && state.config.intervalBoundaryMode === "shared") {
+      const minimum = state.config.firstIntervalRepeatsMin;
+      const maximum = state.config.firstIntervalRepeatsMax;
+      if (minimum === 1 && maximum === 1) {
+        clickStructure = "3-click shared boundary";
+      } else {
+        const intervalName = state.mode === "adaptive" ? "control" : "first interval";
+        const repeatRange = minimum === maximum ? `${minimum}×` : `${minimum}–${maximum}×`;
+        const clickRange = minimum === maximum ? `${minimum + 2}` : `${minimum + 2}–${maximum + 2}`;
+        clickStructure = `${intervalName} repeated ${repeatRange} · ${clickRange} shared-boundary clicks`;
+      }
+    }
     el.sessionSubtitle.textContent = state.mode === "getty"
       ? "330 judgments · standard first · 30 balanced blocks"
       : state.mode === "adaptive"
@@ -1534,7 +1618,8 @@
       const rendered = renderTrialBuffer(t1Ms, t2Ms, state.audio, {
         ...state.config,
         interstimulusMs: timing.interstimulusMs,
-        intervalBoundaryMode: timing.intervalBoundaryMode
+        intervalBoundaryMode: timing.intervalBoundaryMode,
+        firstIntervalRepeats: timing.firstIntervalRepeats
       });
       currentSampleRate = rendered.sampleRate;
       setTrialPhase("Prepare", "Listen to both intervals.");
@@ -1680,7 +1765,8 @@
     return allAnswers().reduce((sum, row) => {
       const [t1Ms, t2Ms] = row.trial;
       const timing = trialTiming(row.trial);
-      return sum + timing.startToFirstTickMs + (state.config.postRollMs ?? 0) + t1Ms + t2Ms
+      return sum + timing.startToFirstTickMs + (state.config.postRollMs ?? 0)
+        + t1Ms * timing.firstIntervalRepeats + t2Ms
         + timing.interstimulusMs + state.audio.clickDurationMs + row.answer[2];
     }, 0);
   }
@@ -1717,7 +1803,7 @@
     const columns = [
       "experiment_id", "participant_id", "mode", "session_index", "trial_index",
       "interval_1_ms", "interval_2_ms", "boundary_mode", "interstimulus_ms", "start_to_first_tick_ms",
-      "post_response_delay_ms", "adaptive_phase", "selected_expected_information_gain",
+      "post_response_delay_ms", "first_interval_repeats", "adaptive_phase", "selected_expected_information_gain",
       "response", "answered_at_unix_ms",
       "response_time_ms", "sample_rate_hz",
       ...ADAPTIVE_RESULT_SCHEMA
@@ -1737,6 +1823,7 @@
         interstimulus_ms: variableTiming ? trial[2] : null,
         start_to_first_tick_ms: variableTiming ? trial[3] : null,
         post_response_delay_ms: variableTiming ? trial[4] : null,
+        first_interval_repeats: variableTiming ? (state.mode === "adaptive" ? trial[7] : trial[5]) : 1,
         adaptive_phase: state.mode === "adaptive" ? trial[5] : null,
         selected_expected_information_gain: state.mode === "adaptive" ? trial[6] : null,
         response: answer[0],
@@ -1913,6 +2000,9 @@
       const adaptive = getSelectedMode() === "adaptive";
       const sharedBoundary = adaptive ? el.adaptiveSharedBoundary.checked : el.sharedBoundary.checked;
       const isi = adaptive ? Number(el.adaptiveIsiMin.value) : Number(el.isiMin.value);
+      const firstIntervalRepeats = sharedBoundary
+        ? Number(adaptive ? el.adaptiveControlRepeatsMin.value : el.firstIntervalRepeatsMin.value)
+        : 1;
       await ensureAudio();
       el.testAudioButton.disabled = true;
       el.testAudioButton.textContent = "Playing…";
@@ -1921,7 +2011,8 @@
         preRollMs: PRE_ROLL_MS,
         postRollMs: POST_ROLL_MS,
         interstimulusMs: sharedBoundary ? 0 : isi,
-        intervalBoundaryMode: sharedBoundary ? "shared" : "separated"
+        intervalBoundaryMode: sharedBoundary ? "shared" : "separated",
+        firstIntervalRepeats
       });
       await playBuffer(rendered.buffer);
     } catch (error) {
@@ -2044,9 +2135,12 @@
     });
     document.addEventListener("keydown", (event) => {
       if (!awaitingResponse || el.runView.hidden) return;
-      if (event.key === "1" || event.key === "2") {
+      const response = event.key === "1" || event.key === "ArrowLeft"
+        ? 1
+        : event.key === "2" || event.key === "ArrowRight" ? 2 : null;
+      if (response !== null) {
         event.preventDefault();
-        recordResponse(Number(event.key));
+        recordResponse(response);
       }
     });
     el.pauseButton.addEventListener("click", pauseRun);

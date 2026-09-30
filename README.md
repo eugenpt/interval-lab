@@ -8,12 +8,14 @@ It includes:
 - a configurable randomized-pairs mode for trial-level model fitting;
 - a Bayesian adaptive mode with either Getty's 11 comparison intervals or a dense custom range around a fixed control interval;
 - fixed-count or target-precision stopping, plus a persistent experimenter diagnostics panel;
+- left/right-arrow response shortcuts while an answer is expected;
+- optional shared-boundary playback with a per-trial randomized number of first/control-interval repetitions;
 - optional inverse-count persistent exploration (off by default), with pure EIG remaining the default selector;
 - automatic local recovery, last-used setup persistence, parameter reuse from saved experiments, multiple saved experiments, JSON import, and JSON/CSV export.
 
 The experiment is entirely client-side. Open `index.html` locally or use the GitHub Pages deployment.
 
-Run `node adaptive.test.js` to exercise estimator serialization, deterministic continuation, posterior recovery, and simulation diagnostics.
+Run `node adaptive.test.js` to exercise estimator serialization, deterministic continuation, posterior recovery, and simulation diagnostics. Run `node stimulus.test.js` to verify separated, three-click, and repeated-control click timing.
 
 ## Reference
 
